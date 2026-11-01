@@ -1,5 +1,7 @@
 # herdr-excalidraw
 
+![Excalidraw in Herdr](preview.png)
+
 An Excalidraw editor for the [Herdr](https://herdr.dev) desktop app, as a mod pane. It opens
 `.excalidraw` files, draws them the way Excalidraw does (same hand-drawn shapes, from
 Excalidraw's own `@excalidraw/element` package), edits them, and saves back to the file.
@@ -9,15 +11,18 @@ native GPUI paths, text is native text, and the editing UI is written for Herdr.
 
 ## Install
 
-```sh
-bun install          # or npm install
-node build.mjs --install
-```
+`mods/excalidraw/` is the built mod, committed. Any of:
 
-This builds `dist/excalidraw/` and copies it to `~/.config/herdr-app/mods/excalidraw`
-(`$HERDR_APP_HOME/mods/excalidraw` if set). Herdr hot-reloads it. The mod brings the
-Excalifont font in `fonts/`; Herdr loads mod fonts at start and on the next look change, so
-restart Herdr (or switch theme) once after the first install, or text falls back to the UI font.
+- Ask your agent: `Read ~/.config/herdr-app/AGENTS.md, then add this mod: herdr.dev/mods/coyaSONG/herdr-excalidraw`
+  (or this repository's URL). The build of it is described in [RECIPE.md](RECIPE.md).
+- Copy `mods/excalidraw` to `~/.config/herdr-app/mods/excalidraw`.
+- From source: `bun install` (or `npm install`), then `node build.mjs --install`. This rebuilds
+  `mods/excalidraw/` and copies it to `~/.config/herdr-app/mods/excalidraw`
+  (`$HERDR_APP_HOME/mods/excalidraw` if set).
+
+Herdr hot-reloads the mod. It brings the Excalifont font in `fonts/`; Herdr loads mod fonts at
+start and on the next look change, so restart Herdr (or switch theme) once after the first
+install, or text falls back to the UI font.
 
 ## Open a drawing
 
@@ -91,8 +96,11 @@ drawing, 2000 at about 25 fps.
 - `build.mjs` — bundles with esbuild, patches roughjs's SVG path tokenizer (it uses
   `RegExp.$1`, which Herdr's QuickJS lacks), copies Excalifont.
 
-Check a build with `herdr-app check dist/excalidraw`.
+Check a build with `herdr-app check mods/excalidraw`.
 
 ## Licenses
 
-Excalidraw packages: MIT. Excalifont: SIL Open Font License 1.1 (`fonts/OFL.txt` in the mod).
+This project: MIT (`LICENSE`). The bundle includes Excalidraw's packages, MIT
+(`licenses/excalidraw.txt`, copied into the mod as `LICENSE-excalidraw.txt`), with the code
+`@excalidraw/element` bundles itself. Excalifont: SIL Open Font License 1.1 (`fonts/OFL.txt`
+in the mod).

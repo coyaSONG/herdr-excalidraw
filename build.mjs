@@ -1,12 +1,13 @@
-// Bundles src/ into a Herdr mod folder (dist/excalidraw) and, with --install,
-// copies it to ~/.config/herdr-app/mods/excalidraw (or $HERDR_APP_HOME/mods/excalidraw).
+// Bundles src/ into the mod folder mods/excalidraw (committed, so the repo is installable
+// as is: herdr.dev and agents copy that folder) and, with --install, copies it to
+// ~/.config/herdr-app/mods/excalidraw (or $HERDR_APP_HOME/mods/excalidraw).
 import { build } from "esbuild";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 const root = new URL(".", import.meta.url).pathname;
-const out = join(root, "dist", "excalidraw");
+const out = join(root, "mods", "excalidraw");
 const appHome = process.env.HERDR_APP_HOME ?? join(homedir(), ".config", "herdr-app");
 
 // roughjs (bundled inside @excalidraw/element) tokenizes SVG paths with the legacy
@@ -52,6 +53,9 @@ await build({
 await writeFile(join(out, "mod.json"), JSON.stringify({ place: "none", title: "Excalidraw" }, null, 2) + "\n");
 await cp(join(root, "node_modules", "excalifont", "fonts", "Excalifont-Regular.ttf"), join(out, "fonts", "Excalifont-Regular.ttf"));
 await cp(join(root, "node_modules", "excalifont", "OFL.txt"), join(out, "fonts", "OFL.txt"));
+// The bundle carries Excalidraw's code (and what @excalidraw/element bundles itself).
+await cp(join(root, "LICENSE"), join(out, "LICENSE"));
+await cp(join(root, "licenses", "excalidraw.txt"), join(out, "LICENSE-excalidraw.txt"));
 console.log(`built ${out}`);
 
 if (process.argv.includes("--install")) {

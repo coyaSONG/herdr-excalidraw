@@ -1,2 +1,4 @@
 node_modules/
-dist/
+# Written into a mod folder by Herdr (herdr-app check, hot reload); not part of the mod.
+mods/*/jsconfig.json
+mods/*/*.d.ts
