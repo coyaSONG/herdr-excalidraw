@@ -1,0 +1,20 @@
+{
+  "name": "herdr-excalidraw",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Excalidraw editor as a Herdr app mod: .excalidraw files drawn with native GPUI paths",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "install-mod": "node build.mjs --install"
+  },
+  "dependencies": {
+    "@excalidraw/common": "0.18.0-f0063e113",
+    "@excalidraw/element": "0.18.0-f0063e113",
+    "@excalidraw/math": "0.18.0-f0063e113",
+    "excalifont": "1.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

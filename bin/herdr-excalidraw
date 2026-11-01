@@ -1,0 +1,25 @@
+#!/bin/sh
+# Opens an .excalidraw file in the Herdr excalidraw mod, beside the focused pane.
+#   herdr-excalidraw drawing.excalidraw            split right
+#   herdr-excalidraw --down drawing.excalidraw     split down
+#   herdr-excalidraw --tab drawing.excalidraw      new tab
+# A file that does not exist yet opens empty and is created on the first change.
+set -eu
+
+where=right
+case "${1:-}" in
+  --down) where=down; shift ;;
+  --right) shift ;;
+  --tab) where=tab; shift ;;
+esac
+[ $# -eq 1 ] || { echo "usage: herdr-excalidraw [--right|--down|--tab] FILE" >&2; exit 2; }
+
+dir=$(cd "$(dirname -- "$1")" && pwd -P)
+file="$dir/$(basename -- "$1")"
+# JSON string escaping for the path (backslashes and quotes).
+json=$(printf '%s' "$file" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+
+if [ "$where" = tab ]; then
+  exec herdr-app do tab.new --name "$(basename -- "$file")" --mod excalidraw --props "{\"file\":\"$json\"}"
+fi
+exec herdr-app do pane.split --direction "$where" --mod excalidraw --props "{\"file\":\"$json\"}"
