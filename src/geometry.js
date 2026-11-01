@@ -57,8 +57,10 @@ function transformFor(el, elementsMap, scale) {
   };
 }
 
-function piece(fill, width, color, dash, n, emit) {
-  return { key: `${fill ? "F" : "S"}|${width.toFixed(3)}|${color}|${dash ? dash.join(",") : ""}`, fill, width, color, dash, n, emit };
+// `loop` keeps one element's overlapping fill loops in separate paths (see drawablePieces);
+// loops of different elements in a batch never overlap, so they still merge.
+function piece(fill, width, color, dash, n, emit, loop = 0) {
+  return { key: `${fill ? "F" : "S"}|${width.toFixed(3)}|${color}|${dash ? dash.join(",") : ""}|${loop}`, fill, width, color, dash, n, emit };
 }
 
 // roughjs sets: "path" is the outline, "fillSketch" the hatching, "fillPath" a solid fill.
@@ -72,8 +74,11 @@ function drawablePieces(el, drawable, xf, scale) {
     if (!color) continue;
     const width = fill ? 0 : (set.type === "fillSketch" ? drawable.options.fillWeight ?? el.strokeWidth / 2 : drawable.options.strokeWidth ?? el.strokeWidth) * scale;
     const dash = outline ? dashFor(el)?.map((v) => v * scale) ?? null : null;
-    out.push(piece(fill, width, color, dash, set.ops.length, (b) => {
-      for (const op of set.ops) {
+    // A solid fill can be two overlapping loops (roughjs draws ellipses twice). Canvas fills
+    // them as one area; GPUI cancels the overlap, so each loop gets its own path.
+    const loops = fill ? splitAtMoves(set.ops) : [set.ops];
+    loops.forEach((ops, i) => out.push(piece(fill, width, color, dash, ops.length, (b) => {
+      for (const op of ops) {
         const d = op.data;
         if (op.op === "move") b = b.move_to(...xf(d[0], d[1]));
         else if (op.op === "lineTo") b = b.line_to(...xf(d[0], d[1]));
@@ -85,9 +90,18 @@ function drawablePieces(el, drawable, xf, scale) {
         }
       }
       return b;
-    }));
+    }, i)));
   }
   return out;
+}
+
+function splitAtMoves(ops) {
+  const loops = [];
+  for (const op of ops) {
+    if (op.op === "move" || !loops.length) loops.push([]);
+    loops[loops.length - 1].push(op);
+  }
+  return loops;
 }
 
 const SVG_TOKEN = /[MLQTCZmlqtcz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g;

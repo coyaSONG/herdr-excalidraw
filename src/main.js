@@ -916,8 +916,11 @@ export default class Excalidraw extends View {
     if (k === "cmd-shift-z" || k === "cmd-y") return this.redo(cx);
     if (k === "cmd-a") { this.tool = "selection"; this.selected = new Set(this.elements().filter((el) => !(el.type === "text" && el.containerId)).map((el) => el.id)); cx.notify(this.liveView); cx.notify(); return; }
     // Herdr owns cmd-= / cmd-- / cmd-0 (its own zoom); the canvas zooms with shift-0 and the wheel.
-    if (k === "shift-0") return this.setZoom(1, null, cx);
-    if (k === "shift-1") return this.fitView(cx);
+    // Shift+1 / Shift+0 arrive as "!" / ")" with shift already consumed (US layout), or as the
+    // digit with shift held on layouts that type something else there.
+    const plain = !e.modifiers.platform && !e.modifiers.control && !e.modifiers.alt;
+    if (plain && (e.key === ")" || (e.modifiers.shift && e.key === "0"))) return this.setZoom(1, null, cx);
+    if (plain && (e.key === "!" || (e.modifiers.shift && e.key === "1"))) return this.fitView(cx);
     if (k === "space") { if (!this.spaceDown) { this.spaceDown = true; cx.notify(); } return; }
     if (k === "escape") { this.selected = new Set(); this.tool = "selection"; cx.notify(this.liveView); cx.notify(); return; }
     if ((k === "backspace" || k === "delete") && this.selected.size) {
