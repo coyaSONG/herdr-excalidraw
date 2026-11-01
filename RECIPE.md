@@ -9,9 +9,17 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
 
 ## What you see
 
-- A mod pane, opened with `pane.split {direction, mod: "excalidraw", props: {file}}` or
-  `tab.new {mod: "excalidraw", props: {file}}`, where `file` is an absolute path (`~/` works).
-  Nothing is added to a layout: `mod.json` is `{ "place": "none", "title": "Excalidraw" }`.
+- **A launcher**, on <kbd>⌘⇧E</kbd> (`mod.open:excalidraw`): a 560×460 dialog titled “Open a
+  drawing” with “New drawing” and “Choose folder…” buttons, a gray line with the folder (`~`
+  for home), a scrolling list of that folder's `.excalidraw` files (the highlighted row is
+  `#e0dfff`, others white, hover `#f1f0ff`), a small “Tab” button on each row, and a hint at
+  the bottom. The folder is the focused terminal's, else another terminal's in the tab, else
+  home.
+- **An editor pane**, opened from the launcher, or with `pane.split {direction, mod:
+  "excalidraw", props: {file}}` / `tab.new {mod: "excalidraw", props: {file}}` (`file`
+  absolute, `~/` works). A pane opened without a file shows the same list in place, titled
+  “Excalidraw”, without the Tab buttons. Nothing is added to a layout: `mod.json` is
+  `{ "place": "none", "title": "Excalidraw", "overlay": { "width": 560, "height": 460 } }`.
 - The drawing's own canvas color (`appState.viewBackgroundColor`, white by default) fills the
   pane. Shapes are Excalidraw's: rough outlines, hachure / cross-hatch / solid fills, dashed and
   dotted strokes, rounded corners, arrows with arrowheads, free-draw strokes with pressure
@@ -29,7 +37,7 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
   1, 2), and Font size (S 16, M 20, L 28, XL 36) when text is involved. The current value has
   a 2px `#6965db` border or the selected background.
 - A status row 8px from the bottom-left, 12px `#868e96`: `−`, the zoom percent, `+`, `↶`,
-  `↷`, then `file name · Saved | Unsaved | Saving… | New file | Save failed: …`.
+  `↷`, `Open…`, then `file name · Saved | Unsaved | Saving… | New file | Save failed: …`.
 - Selection: a 1.5px `#6965db` outline 6px outside each selected element, a dashed one around
   several. The selection box is `#6965db` over a `#6965db1f` fill. The eraser outlines what it
   will remove with dashed `#e03131`. Text being edited sits in a dashed `#6965db` frame.
@@ -37,6 +45,19 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
   float on the drawing's canvas, which is light.
 
 ## How it behaves
+
+Choosing a drawing:
+
+- In the launcher, a click on a row (or ↑/↓ and Enter) opens it with `pane.split {direction:
+  "right", pane: <the pane focused when the launcher opened>, mod, props: {file}}` and closes
+  the launcher; “Tab” opens it with `tab.new {name: <file name>, mod, props: {file}}`. With no
+  focused pane it opens in a new tab. Escape closes.
+- “New drawing” writes an empty drawing as `drawing.excalidraw`, else `drawing-2…`, in the
+  listed folder (never overwriting) and opens it the same way. “Choose folder…” asks with the
+  system folder picker and lists that folder.
+- In a pane's own list, choosing opens the drawing in that pane and stores its path in the
+  copy's `localStorage` (`file`), so the pane reopens it after a restart; Escape returns to
+  the drawing it showed, if any. `Open…` in the status row saves, then shows that list.
 
 | Tool | Key | Does |
 |---|---|---|
@@ -74,11 +95,17 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
 ## Built from
 
 - **One mod**, `mods/excalidraw/`: `main.js` (one esbuild bundle), `mod.json`,
-  `fonts/Excalifont-Regular.ttf` with `fonts/OFL.txt`, and license files. No `layouts/`, no
-  `keys.json`.
+  `fonts/Excalifont-Regular.ttf` with `fonts/OFL.txt`, and license files. No `layouts/`.
+- **A `keys.json` snippet**, merged into the person's keys (both sections, so it works while a
+  terminal has focus):
+
+  ```json
+  { "global": { "cmd-shift-e": "mod.open:excalidraw" }, "terminal": { "cmd-shift-e": "mod.open:excalidraw" } }
+  ```
 - **Source** (`src/`), bundled by `build.mjs` (esbuild, ESM, platform neutral, `gpui-kit`,
   `gpui-base`, `herdr`, `buffer`, `fs/promises` external):
-  - `main.js`: the pane `View`. Static drawing in retained child views
+  - `main.js`: the pane `View`, in three states: the list (launcher or in-pane), loading/error,
+    and the editor. Static drawing in retained child views
     (`cx.new(Layer, {idx})`, re-described only after a change), one live child view for what
     is being drawn or dragged plus selection outlines, and the toolbar, panel and status row in
     the root. Pointer handlers on a full-size canvas `div`; the drawing sits in a child `div`
@@ -103,12 +130,15 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
   `bindOrUnbindLinearElement`, `updateBoundElements`, `fixBindingsAfterDeletion`,
   `getBoundTextElement`, `redrawTextBoundingBox`, `refreshTextDimensions`,
   `setCustomTextMetricsProvider`.
-- **Herdr functions**: `props`, `settings` (zoom), `theme` (only for the loading/error
-  message), `readTextFile`, `writeTextFile`, `watchFolder`, `notify`, `home`, `appHome`;
-  `fs/promises` `mkdir`/`writeFile`.
-- **What it touches**: no network, no `exec`, no `hc`. It reads and writes the one file in its
-  props, watches that file's folder, and writes the drawing's embedded images (decoded from
-  their data URLs) to `~/.config/herdr-app/data/herdr-excalidraw/` so `image()` can show them.
+- **Herdr functions**: `props` (`file`, `overlay`), `settings` (zoom), `theme` (only for the
+  loading/error message), `focused`, `panes`, `run` (`pane.split`, `tab.new`), `closeOverlay`,
+  `pickFolder`, `readTextFile`, `writeTextFile`, `watchFolder`, `notify`, `home`, `appHome`;
+  `fs/promises` `readdir`/`exists`/`mkdir`/`writeFile`; `localStorage`.
+  `picker.js` is the list: folder listing, new-drawing names, keys, the rows.
+- **What it touches**: no network, no `exec`, no `hc`. It lists folders you open the launcher
+  in or choose, creates new drawings there, reads and writes the drawing it shows, watches
+  that drawing's folder, and writes the drawing's embedded images (decoded from their data
+  URLs) to `~/.config/herdr-app/data/herdr-excalidraw/` so `image()` can show them.
 - **Helper**: `bin/herdr-excalidraw [--right|--down|--tab] FILE` resolves the path and runs
   `herdr-app do pane.split` / `tab.new` with the props.
 
@@ -146,6 +176,12 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
 ## Done when
 
 - `herdr-app check mods/excalidraw` passes.
+- In a terminal whose folder has two drawings, <kbd>⌘⇧E</kbd> shows both; Enter opens the
+  first beside the terminal; “Tab” on the second opens it in a new tab named after it; “New
+  drawing” creates `drawing.excalidraw` and opens it empty. <kbd>⌘⇧E</kbd> from an editor pane
+  lists the same folder.
+- `pane.split` with the mod and no props shows the list in the pane; Enter opens the first
+  drawing there; `Open…` then ↓ Enter switches that pane to the second.
 - A drawing with a rounded hachure rectangle holding centered text, an arrow bound to a
   cross-hatched ellipse, a rotated solid diamond, a dashed thick line, a free-draw stroke and
   two-line text with Hangul opens drawn like Excalidraw: fills present (a solid ellipse is

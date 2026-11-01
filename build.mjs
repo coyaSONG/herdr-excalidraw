@@ -50,7 +50,8 @@ await build({
   plugins: [patchRoughTokenizer],
 });
 
-await writeFile(join(out, "mod.json"), JSON.stringify({ place: "none", title: "Excalidraw" }, null, 2) + "\n");
+// No place in a layout; mod.open:excalidraw shows the launcher at this size.
+await writeFile(join(out, "mod.json"), JSON.stringify({ place: "none", title: "Excalidraw", overlay: { width: 560, height: 460 } }, null, 2) + "\n");
 await cp(join(root, "node_modules", "excalifont", "fonts", "Excalifont-Regular.ttf"), join(out, "fonts", "Excalifont-Regular.ttf"));
 await cp(join(root, "node_modules", "excalifont", "OFL.txt"), join(out, "fonts", "OFL.txt"));
 // The bundle carries Excalidraw's code (and what @excalidraw/element bundles itself).

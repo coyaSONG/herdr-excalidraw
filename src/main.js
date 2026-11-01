@@ -1,8 +1,8 @@
-// Excalidraw editor as a Herdr mod pane. Open one with:
-//   herdr-app do pane.split '{"direction":"right","mod":"excalidraw","props":{"file":"/abs/path/drawing.excalidraw"}}'
+// Excalidraw editor as a Herdr mod. As a pane it edits props.file (or a drawing chosen in the
+// pane); opened with mod.open:excalidraw it is a launcher that opens drawings beside the pane.
 import { View, div, PathBuilder, image } from "gpui-kit";
 import { TextareaState, Textarea } from "gpui-base";
-import { props, settings, theme, readTextFile, writeTextFile, watchFolder, notify, home, appHome } from "herdr";
+import { props, settings, theme, readTextFile, writeTextFile, watchFolder, notify, home, appHome, run, focused, panes, closeOverlay } from "herdr";
 import { Buffer } from "buffer";
 import * as fs from "fs/promises";
 import {
@@ -27,6 +27,7 @@ import {
 } from "@excalidraw/element";
 import { ROUNDNESS, FONT_FAMILY, getLineHeight } from "@excalidraw/common";
 import { buildLayers, toColor, fontName } from "./geometry.js";
+import { Picker } from "./picker.js";
 import { History, emptyDocument, parseDocument, serializeDocument } from "./document.js";
 
 // There is no text measuring API in Herdr mods. Excalidraw sizes text boxes with this:
@@ -131,12 +132,107 @@ export default class Excalidraw extends View {
     // enclosing key context still reach the wrapper's on_action.
     cx.bind_keys([{ keystroke: "escape", action: "excalidraw_end_edit", context: "ExcalidrawTextEditor" }]);
 
-    this.file = resolveFile(props()?.file);
-    if (!this.file) { this.status = "nofile"; return; }
-    cx.spawn(async (cx) => {
-      if (await this.load(cx)) await this.watch(cx);
-    });
+    this.watchGen = 0;
+    const p = props() ?? {};
+    // Opened with mod.open: a launcher overlay. Drawings it opens go beside the pane it was opened from.
+    this.overlay = p.overlay ?? null;
+    this.fromPane = this.overlay ? focused()?.pane ?? null : null;
     cx.timer.every(200, (cx) => this.tick(cx));
+    // A pane remembers the drawing chosen in it (props carry the one it was opened with).
+    const file = resolveFile(p.file) ?? (this.overlay ? null : resolveFile(localStorage.getItem("file")));
+    if (file) this.openFile(file, cx);
+    else this.showPicker(cx);
+  }
+
+  // ---- choosing a drawing ------------------------------------------------------------
+
+  openFile(file, cx) {
+    this.file = file;
+    this.status = "loading";
+    this.picker = null;
+    this.history = new History();
+    this.selected = new Set();
+    this.active = new Set();
+    this.pointer = null;
+    this.editing = null;
+    this.vz = 1;
+    this.scrollX = 0;
+    this.scrollY = 0;
+    this.dirty = false;
+    this.saveError = null;
+    this.lastText = null;
+    const gen = ++this.watchGen;
+    cx.spawn(async (cx) => {
+      if (await this.load(cx)) await this.watch(cx, gen);
+    });
+    cx.notify();
+  }
+
+  /** The folder a list starts in: the current drawing's, else the terminal you were in, else home. */
+  startFolder() {
+    if (this.file) return dirname(this.file);
+    const f = focused();
+    return f?.cwd ?? panes().find((p) => p.tab === f?.tab && p.cwd)?.cwd ?? home();
+  }
+
+  showPicker(cx) {
+    this.status = "pick";
+    this.picker = new Picker(this.startFolder());
+    cx.spawn(async (cx) => {
+      await this.picker?.refresh();
+      cx.notify();
+      // The list takes the keyboard once it is on screen.
+      await cx.sleep(16);
+      this.focus.focus();
+    });
+    cx.notify();
+  }
+
+  /** From the editor: save, then show the list to pick another drawing for this pane. */
+  switchFile(cx) {
+    cx.spawn(async (cx) => {
+      if (this.editing) this.endEdit(cx, {});
+      if (this.dirty) await this.save(cx);
+      this.showPicker(cx);
+    });
+  }
+
+  /** Opens a drawing: beside the launcher's pane (or in a new tab), or in this pane. */
+  choose(path, cx, { tab = false } = {}) {
+    if (!this.overlay) {
+      localStorage.setItem("file", path);
+      this.openFile(path, cx);
+      return;
+    }
+    const spec = { mod: "excalidraw", props: { file: path } };
+    if (tab || !this.fromPane) run("tab.new", { name: basename(path), ...spec });
+    else run("pane.split", { direction: "right", pane: this.fromPane, ...spec });
+    closeOverlay(this.overlay);
+  }
+
+  pickerActions() {
+    const fail = (what, e) => notify({ title: `Excalidraw: ${what}`, body: String(e?.message ?? e), level: "error" });
+    return {
+      open: (name, cx) => this.choose(this.picker.path(name), cx),
+      openInTab: this.overlay ? (name, cx) => this.choose(this.picker.path(name), cx, { tab: true }) : null,
+      newDrawing: (cx) => cx.spawn(async (cx) => {
+        try { this.choose(await this.picker.newDrawing(), cx); } catch (e) { fail("can't create a drawing", e); }
+      }),
+      chooseFolder: (cx) => cx.spawn(async (cx) => {
+        if (await this.picker.chooseFolder()) cx.notify();
+      }),
+    };
+  }
+
+  pickerKey(e, cx) {
+    if (e.key === "escape") {
+      if (this.overlay) closeOverlay(this.overlay);
+      else if (this.file) this.openFile(this.file, cx);
+      return;
+    }
+    const name = this.picker.key(e);
+    if (name) this.choose(this.picker.path(name), cx);
+    cx.notify();
   }
 
   // ---- coordinates -------------------------------------------------------------------
@@ -181,12 +277,12 @@ export default class Excalidraw extends View {
   }
 
   /** Reloads when the file changes on disk (another editor, an agent, git). */
-  async watch(cx) {
+  async watch(cx, gen) {
     const dir = dirname(this.file);
     for (;;) {
       let changed;
       try { changed = await watchFolder(dir); } catch { return; }
-      if (this.closed) return;
+      if (this.closed || gen !== this.watchGen) return;
       if (!changed.some((p) => samePath(p, this.file))) continue;
       const text = await readTextFile(this.file).catch(() => null);
       if (text != null && text !== this.lastText) await this.applyExternal(text, cx);
@@ -360,10 +456,15 @@ export default class Excalidraw extends View {
     const t = theme();
     const root = div().id("excalidraw").size_full().relative().overflow_hidden().bg(t.background ?? "#ffffff")
       .on_size_change((size, cx) => { this.size = size; cx.notify(); });
+    if (this.status === "pick") {
+      const hint = this.overlay
+        ? "Click opens it beside the current pane · Tab: in a new tab · ↑↓ Enter · Esc closes"
+        : "Click opens it in this pane · ↑↓ Enter";
+      return root.track_focus(this.focus).on_key_down((e, cx) => this.pickerKey(e, cx))
+        .child(this.picker.render(UI, this.pickerActions(), { title: this.overlay ? "Open a drawing" : "Excalidraw", hint }));
+    }
     if (this.status !== "ready") {
-      const message = this.status === "nofile"
-        ? ["No file to show. Open a drawing with:", `herdr-app do pane.split '{"direction":"right","mod":"excalidraw","props":{"file":"/abs/path/drawing.excalidraw"}}'`]
-        : this.status === "error" ? ["Can't open the drawing.", this.error] : ["Loading…"];
+      const message = this.status === "error" ? ["Can't open the drawing.", this.error] : ["Loading…"];
       return root.child(div().p(16).gap(8).text_size(13).text_color(t.foreground ?? "#1e1e1e").children(message.map((m) => div().child(m))));
     }
     const bg = toColor(this.doc.appState.viewBackgroundColor) ?? "#ffffff";
@@ -454,6 +555,7 @@ export default class Excalidraw extends View {
       this.button("zoom-in", "+", false, t, (cx) => this.zoomBy(1.2, null, cx)),
       this.button("undo", "↶", false, t, (cx) => this.undo(cx)),
       this.button("redo", "↷", false, t, (cx) => this.redo(cx)),
+      this.button("open", "Open…", false, t, (cx) => this.switchFile(cx)),
       div().child(`${basename(this.file)} · ${state}`),
     ]);
   }

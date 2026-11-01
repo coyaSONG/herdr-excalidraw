@@ -1,0 +1,4 @@
+{
+  "global": { "cmd-shift-e": "mod.open:excalidraw" },
+  "terminal": { "cmd-shift-e": "mod.open:excalidraw" }
+}

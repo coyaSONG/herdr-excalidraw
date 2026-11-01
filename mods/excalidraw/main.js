@@ -25,11 +25,11 @@ globalThis.Path2D ??= class Path2D { constructor(d) { this.d = d; } };
 
 
 // src/main.js
-import { View, div, PathBuilder as PathBuilder2, image } from "gpui-kit";
+import { View, div as div2, PathBuilder as PathBuilder2, image } from "gpui-kit";
 import { TextareaState, Textarea } from "gpui-base";
-import { props, settings, theme, readTextFile, writeTextFile, watchFolder, notify, home, appHome } from "herdr";
+import { props, settings, theme, readTextFile, writeTextFile as writeTextFile2, watchFolder, notify, home as home2, appHome, run, focused, panes, closeOverlay } from "herdr";
 import { Buffer } from "buffer";
-import * as fs from "fs/promises";
+import * as fs2 from "fs/promises";
 
 // node_modules/@excalidraw/math/dist/prod/index.js
 var y = 1e-4;
@@ -4555,6 +4555,11 @@ function buildLayers(elements, elementsMap, scale, opts) {
   return layers.map((l) => ({ bounds: l.bounds, draw: l.batches.flatMap((b) => batchDrawList(b.items)) }));
 }
 
+// src/picker.js
+import { div } from "gpui-kit";
+import { home, pickFolder, writeTextFile } from "herdr";
+import * as fs from "fs/promises";
+
 // src/document.js
 var SOURCE = "herdr-excalidraw";
 function legacyRoundness(el) {
@@ -4659,6 +4664,94 @@ var History = class {
   }
 };
 
+// src/picker.js
+var EXT = ".excalidraw";
+var MAX_FILES = 300;
+var tildify = (p2) => p2 === home() ? "~" : p2.startsWith(`${home()}/`) ? `~${p2.slice(home().length)}` : p2;
+var Picker = class {
+  constructor(folder) {
+    this.folder = folder;
+    this.files = [];
+    this.error = null;
+    this.index = 0;
+    this.loaded = false;
+  }
+  async refresh() {
+    try {
+      const entries = await fs.readdir(this.folder, { withFileTypes: true });
+      this.files = entries.filter((e4) => !e4.isDirectory() && e4.name.toLowerCase().endsWith(EXT) && !e4.name.startsWith(".")).map((e4) => e4.name).sort((a, b) => a.localeCompare(b)).slice(0, MAX_FILES);
+      this.error = null;
+    } catch (e4) {
+      this.files = [];
+      this.error = `Can't list ${tildify(this.folder)}: ${e4?.message ?? e4}`;
+    }
+    this.index = Math.min(this.index, Math.max(0, this.files.length - 1));
+    this.loaded = true;
+  }
+  path(name) {
+    return `${this.folder}/${name}`;
+  }
+  async chooseFolder() {
+    const folder = await pickFolder({ prompt: "Folder with drawings" });
+    if (!folder) return false;
+    this.folder = folder;
+    this.index = 0;
+    await this.refresh();
+    return true;
+  }
+  /** Creates drawing.excalidraw (or drawing-2, -3, …) in the folder and returns its path. */
+  async newDrawing() {
+    for (let n = 1; n < 1e3; n++) {
+      const path = this.path(n === 1 ? `drawing${EXT}` : `drawing-${n}${EXT}`);
+      if (await fs.exists(path)) continue;
+      await writeTextFile(path, serializeDocument(emptyDocument()), null);
+      return path;
+    }
+    throw new Error("no free drawing-N.excalidraw name");
+  }
+  /** Up/down move, enter opens; returns the file name to open or null. */
+  key(e4) {
+    if (e4.key === "down") this.index = Math.min(this.index + 1, this.files.length - 1);
+    else if (e4.key === "up") this.index = Math.max(this.index - 1, 0);
+    else if (e4.key === "enter" && this.files.length) return this.files[this.index];
+    return null;
+  }
+  /**
+   * The list. `t` is the light palette; `actions`: open(name), openInTab?(name), newDrawing(),
+   * chooseFolder(). `title` heads it; `hint` explains what a click does.
+   */
+  render(t, actions, { title, hint }) {
+    const button = (id, label, onPress) => div().id(id).px(10).py(5).rounded(6).text_size(13).cursor_pointer().border(1).border_color(t.border).bg(t.surface).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
+      cx.stop_propagation();
+      onPress(cx);
+    }).child(label);
+    const rows = this.files.map((name, i) => div().id(`file-${i}`).flex().items_center().gap(8).px(10).py(6).rounded(6).cursor_pointer().bg(i === this.index ? t.selected : t.surface).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
+      cx.stop_propagation();
+      this.index = i;
+      actions.open(name, cx);
+    }).children([
+      div().flex_1().text_size(14).text_color(t.foreground).truncate().child(name),
+      actions.openInTab ? div().id(`file-tab-${i}`).px(8).py(2).rounded(4).text_size(12).text_color(t.muted).border(1).border_color(t.border).hover((s) => s.bg(t.surface)).on_mouse_down("left", (e4, cx) => {
+        cx.stop_propagation();
+        actions.openInTab(name, cx);
+      }).child("Tab") : div()
+    ]));
+    const empty = this.error ?? (this.loaded ? "No drawings here yet. Start a new one, or choose another folder." : "Loading\u2026");
+    return div().flex().flex_col().gap(10).p(16).size_full().bg(t.surface).text_color(t.foreground).children([
+      div().flex().items_center().justify_between().children([
+        div().text_size(16).font_semibold().child(title),
+        div().flex().gap(6).children([
+          button("new-drawing", "New drawing", (cx) => actions.newDrawing(cx)),
+          button("choose-folder", "Choose folder\u2026", (cx) => actions.chooseFolder(cx))
+        ])
+      ]),
+      div().text_size(12).text_color(t.muted).truncate().child(tildify(this.folder)),
+      div().id("file-list").flex_1().flex().flex_col().gap(2).overflow_y_scrollbar().children(rows.length ? rows : [div().p(10).text_size(13).text_color(t.muted).child(empty)]),
+      div().text_size(11).text_color(t.muted).child(hint)
+    ]);
+  }
+};
+
 // src/main.js
 var isWide = (c2) => c2 >= 4352 && c2 <= 4447 || c2 >= 11904 && c2 <= 42191 || c2 >= 44032 && c2 <= 55203 || c2 >= 63744 && c2 <= 64255 || c2 >= 65072 && c2 <= 65103 || c2 >= 65280 && c2 <= 65376 || c2 >= 65504 && c2 <= 65510 || c2 >= 127744 && c2 <= 129791;
 Rx({
@@ -4718,7 +4811,7 @@ var samePath = (a, b) => a === b || a === `/private${b}` || `/private${a}` === b
 function resolveFile(file) {
   if (typeof file !== "string" || !file.trim()) return null;
   const f2 = file.trim();
-  if (f2 === "~" || f2.startsWith("~/")) return home() + f2.slice(1);
+  if (f2 === "~" || f2.startsWith("~/")) return home2() + f2.slice(1);
   return f2.startsWith("/") ? f2 : null;
 }
 var rectPath = (x1, y1, x2, y22, width, dash) => {
@@ -4755,8 +4848,8 @@ var Excalidraw = class extends View {
     this.status = "loading";
     const editor = this;
     this.Layer = class Layer extends View {
-      init(p2) {
-        this.idx = p2.idx;
+      init(p3) {
+        this.idx = p3.idx;
       }
       render() {
         return editor.renderLayer(this.idx);
@@ -4769,15 +4862,100 @@ var Excalidraw = class extends View {
       }
     });
     cx.bind_keys([{ keystroke: "escape", action: "excalidraw_end_edit", context: "ExcalidrawTextEditor" }]);
-    this.file = resolveFile(props()?.file);
-    if (!this.file) {
-      this.status = "nofile";
+    this.watchGen = 0;
+    const p2 = props() ?? {};
+    this.overlay = p2.overlay ?? null;
+    this.fromPane = this.overlay ? focused()?.pane ?? null : null;
+    cx.timer.every(200, (cx2) => this.tick(cx2));
+    const file = resolveFile(p2.file) ?? (this.overlay ? null : resolveFile(localStorage.getItem("file")));
+    if (file) this.openFile(file, cx);
+    else this.showPicker(cx);
+  }
+  // ---- choosing a drawing ------------------------------------------------------------
+  openFile(file, cx) {
+    this.file = file;
+    this.status = "loading";
+    this.picker = null;
+    this.history = new History();
+    this.selected = /* @__PURE__ */ new Set();
+    this.active = /* @__PURE__ */ new Set();
+    this.pointer = null;
+    this.editing = null;
+    this.vz = 1;
+    this.scrollX = 0;
+    this.scrollY = 0;
+    this.dirty = false;
+    this.saveError = null;
+    this.lastText = null;
+    const gen = ++this.watchGen;
+    cx.spawn(async (cx2) => {
+      if (await this.load(cx2)) await this.watch(cx2, gen);
+    });
+    cx.notify();
+  }
+  /** The folder a list starts in: the current drawing's, else the terminal you were in, else home. */
+  startFolder() {
+    if (this.file) return dirname(this.file);
+    const f2 = focused();
+    return f2?.cwd ?? panes().find((p2) => p2.tab === f2?.tab && p2.cwd)?.cwd ?? home2();
+  }
+  showPicker(cx) {
+    this.status = "pick";
+    this.picker = new Picker(this.startFolder());
+    cx.spawn(async (cx2) => {
+      await this.picker?.refresh();
+      cx2.notify();
+      await cx2.sleep(16);
+      this.focus.focus();
+    });
+    cx.notify();
+  }
+  /** From the editor: save, then show the list to pick another drawing for this pane. */
+  switchFile(cx) {
+    cx.spawn(async (cx2) => {
+      if (this.editing) this.endEdit(cx2, {});
+      if (this.dirty) await this.save(cx2);
+      this.showPicker(cx2);
+    });
+  }
+  /** Opens a drawing: beside the launcher's pane (or in a new tab), or in this pane. */
+  choose(path, cx, { tab = false } = {}) {
+    if (!this.overlay) {
+      localStorage.setItem("file", path);
+      this.openFile(path, cx);
       return;
     }
-    cx.spawn(async (cx2) => {
-      if (await this.load(cx2)) await this.watch(cx2);
-    });
-    cx.timer.every(200, (cx2) => this.tick(cx2));
+    const spec = { mod: "excalidraw", props: { file: path } };
+    if (tab || !this.fromPane) run("tab.new", { name: basename(path), ...spec });
+    else run("pane.split", { direction: "right", pane: this.fromPane, ...spec });
+    closeOverlay(this.overlay);
+  }
+  pickerActions() {
+    const fail = (what, e4) => notify({ title: `Excalidraw: ${what}`, body: String(e4?.message ?? e4), level: "error" });
+    return {
+      open: (name, cx) => this.choose(this.picker.path(name), cx),
+      openInTab: this.overlay ? (name, cx) => this.choose(this.picker.path(name), cx, { tab: true }) : null,
+      newDrawing: (cx) => cx.spawn(async (cx2) => {
+        try {
+          this.choose(await this.picker.newDrawing(), cx2);
+        } catch (e4) {
+          fail("can't create a drawing", e4);
+        }
+      }),
+      chooseFolder: (cx) => cx.spawn(async (cx2) => {
+        if (await this.picker.chooseFolder()) cx2.notify();
+      })
+    };
+  }
+  pickerKey(e4, cx) {
+    if (e4.key === "escape") {
+      if (this.overlay) closeOverlay(this.overlay);
+      else if (this.file) this.openFile(this.file, cx);
+      return;
+    }
+    const name = this.picker.key(e4);
+    if (name) this.choose(this.picker.path(name), cx);
+    cx.notify();
   }
   // ---- coordinates -------------------------------------------------------------------
   herdrZoom() {
@@ -4835,7 +5013,7 @@ var Excalidraw = class extends View {
     return false;
   }
   /** Reloads when the file changes on disk (another editor, an agent, git). */
-  async watch(cx) {
+  async watch(cx, gen) {
     const dir = dirname(this.file);
     for (; ; ) {
       let changed;
@@ -4844,7 +5022,7 @@ var Excalidraw = class extends View {
       } catch {
         return;
       }
-      if (this.closed) return;
+      if (this.closed || gen !== this.watchGen) return;
       if (!changed.some((p2) => samePath(p2, this.file))) continue;
       const text = await readTextFile(this.file).catch(() => null);
       if (text != null && text !== this.lastText) await this.applyExternal(text, cx);
@@ -4879,14 +5057,14 @@ var Excalidraw = class extends View {
     const entries = Object.entries(this.doc.files ?? {}).filter(([id]) => !this.imageFiles.has(id));
     if (!entries.length) return;
     const dir = `${appHome()}/data/herdr-excalidraw`;
-    await fs.mkdir(dir, { recursive: true });
+    await fs2.mkdir(dir, { recursive: true });
     for (const [id, f2] of entries) {
       const m = /^data:image\/([a-z0-9+.-]+);base64,(.*)$/is.exec(f2?.dataURL ?? "");
       if (!m) continue;
       const ext = { jpeg: "jpg", "svg+xml": "svg" }[m[1].toLowerCase()] ?? m[1].toLowerCase();
       const name = `${id.replace(/[^A-Za-z0-9_-]/g, "_")}.${ext}`;
       try {
-        await fs.writeFile(`${dir}/${name}`, Buffer.from(m[2], "base64"));
+        await fs2.writeFile(`${dir}/${name}`, Buffer.from(m[2], "base64"));
         this.imageFiles.set(id, `data/herdr-excalidraw/${name}`);
       } catch (e4) {
         console.log(`excalidraw: image ${id}: ${e4?.message ?? e4}`);
@@ -4910,7 +5088,7 @@ var Excalidraw = class extends View {
     const text = serializeDocument({ ...this.doc, elements: this.scene.getElementsIncludingDeleted() });
     const seq = this.saveAt;
     try {
-      await writeTextFile(this.file, text, this.lastText);
+      await writeTextFile2(this.file, text, this.lastText);
       this.lastText = text;
       if (this.saveAt === seq) this.dirty = false;
       this.saveError = null;
@@ -4954,15 +5132,15 @@ var Excalidraw = class extends View {
       if (d.kind === "path") return window.paint_path(d.path, d.color).absolute().top(0).left(0).size_full();
       if (d.kind === "image") return image(d.file).absolute().left(d.x * vz).top(d.y * vz).w(d.w * vz).h(d.h * vz);
       const lineHeight = d.fontSize * d.lineHeight * vz;
-      return div().absolute().left(d.x * vz).top(d.y * vz).w(Math.max(d.w, 1) * vz).font_family(d.font).text_size(d.fontSize * vz).line_height(`${lineHeight}px`).text_color(d.color).whitespace_nowrap().children(d.lines.map((line) => {
-        const row = div().w_full().h(lineHeight).child(line || " ");
+      return div2().absolute().left(d.x * vz).top(d.y * vz).w(Math.max(d.w, 1) * vz).font_family(d.font).text_size(d.fontSize * vz).line_height(`${lineHeight}px`).text_color(d.color).whitespace_nowrap().children(d.lines.map((line) => {
+        const row = div2().w_full().h(lineHeight).child(line || " ");
         return d.align === "center" ? row.text_center() : d.align === "right" ? row.text_right() : row;
       }));
     });
   }
   renderLayer(idx) {
     const layer = this.layers[idx];
-    return div().absolute().top(0).left(0).size_full().children(layer ? this.drawList(layer.draw, this.builtVz) : []);
+    return div2().absolute().top(0).left(0).size_full().children(layer ? this.drawList(layer.draw, this.builtVz) : []);
   }
   /** Elements being drawn or dragged, the selection outline, the marquee. */
   renderLive() {
@@ -4990,7 +5168,7 @@ var Excalidraw = class extends View {
         if (el) draw.push(outline(he2(el, map), "#e03131", [4, 3]));
       }
     }
-    return div().absolute().top(0).left(0).size_full().children(this.drawList(draw, this.vz));
+    return div2().absolute().top(0).left(0).size_full().children(this.drawList(draw, this.vz));
   }
   /** Static layers whose bounds meet the view. */
   visibleLayerViews() {
@@ -5002,17 +5180,21 @@ var Excalidraw = class extends View {
   }
   render(_cx) {
     const t = theme();
-    const root = div().id("excalidraw").size_full().relative().overflow_hidden().bg(t.background ?? "#ffffff").on_size_change((size, cx) => {
+    const root = div2().id("excalidraw").size_full().relative().overflow_hidden().bg(t.background ?? "#ffffff").on_size_change((size, cx) => {
       this.size = size;
       cx.notify();
     });
+    if (this.status === "pick") {
+      const hint = this.overlay ? "Click opens it beside the current pane \xB7 Tab: in a new tab \xB7 \u2191\u2193 Enter \xB7 Esc closes" : "Click opens it in this pane \xB7 \u2191\u2193 Enter";
+      return root.track_focus(this.focus).on_key_down((e4, cx) => this.pickerKey(e4, cx)).child(this.picker.render(UI, this.pickerActions(), { title: this.overlay ? "Open a drawing" : "Excalidraw", hint }));
+    }
     if (this.status !== "ready") {
-      const message = this.status === "nofile" ? ["No file to show. Open a drawing with:", `herdr-app do pane.split '{"direction":"right","mod":"excalidraw","props":{"file":"/abs/path/drawing.excalidraw"}}'`] : this.status === "error" ? ["Can't open the drawing.", this.error] : ["Loading\u2026"];
-      return root.child(div().p(16).gap(8).text_size(13).text_color(t.foreground ?? "#1e1e1e").children(message.map((m) => div().child(m))));
+      const message = this.status === "error" ? ["Can't open the drawing.", this.error] : ["Loading\u2026"];
+      return root.child(div2().p(16).gap(8).text_size(13).text_color(t.foreground ?? "#1e1e1e").children(message.map((m) => div2().child(m))));
     }
     const bg = toColor(this.doc.appState.viewBackgroundColor) ?? "#ffffff";
     const cursor = (el) => this.tool === "hand" || this.spaceDown ? el.cursor_grab() : this.tool === "text" ? el.cursor_text() : this.tool === "selection" ? el.cursor_default() : el.cursor_crosshair();
-    const canvas = cursor(div().id("canvas").absolute().top(0).left(0).size_full().bg(bg).overflow_hidden()).on_mouse_down("left", (e4, cx) => this.onDown(e4, cx)).on_mouse_down("middle", (e4, cx) => this.onPanStart(e4, cx)).on_mouse_move((e4, cx) => this.onMove(e4, cx)).on_mouse_up("left", (e4, cx) => this.onUp(cx)).on_mouse_up("middle", (e4, cx) => this.onUp(cx)).on_scroll_wheel((e4, cx) => this.onWheel(e4, cx)).child(div().absolute().left(this.scrollX * this.vz).top(this.scrollY * this.vz).size_full().children([...this.visibleLayerViews(), this.liveView, ...this.textEditor()]));
+    const canvas = cursor(div2().id("canvas").absolute().top(0).left(0).size_full().bg(bg).overflow_hidden()).on_mouse_down("left", (e4, cx) => this.onDown(e4, cx)).on_mouse_down("middle", (e4, cx) => this.onPanStart(e4, cx)).on_mouse_move((e4, cx) => this.onMove(e4, cx)).on_mouse_up("left", (e4, cx) => this.onUp(cx)).on_mouse_up("middle", (e4, cx) => this.onUp(cx)).on_scroll_wheel((e4, cx) => this.onWheel(e4, cx)).child(div2().absolute().left(this.scrollX * this.vz).top(this.scrollY * this.vz).size_full().children([...this.visibleLayerViews(), this.liveView, ...this.textEditor()]));
     return root.track_focus(this.focus).on_key_down((e4, cx) => this.onKey(e4, cx)).on_key_up((e4, cx) => {
       if (e4.key === "space") {
         this.spaceDown = false;
@@ -5031,33 +5213,33 @@ var Excalidraw = class extends View {
     const top = container ? container.y + Math.max(0, (container.height - el.height) / 2) : el.y;
     let editor = Textarea.new(this.editing.state).font_family(fontName(el.fontFamily)).text_size(el.fontSize * vz).text_color(toColor(el.strokeColor) ?? "#1e1e1e");
     if (container) editor = editor.text_center();
-    return [div().id("text-editor").absolute().left(x2 * vz).top(top * vz).w(width * vz).p(2).border(1).border_dashed().border_color(SELECTION).key_context("ExcalidrawTextEditor").on_action("excalidraw_end_edit", (_e2, cx) => this.endEdit(cx, {})).on_key_down((e4, cx) => {
+    return [div2().id("text-editor").absolute().left(x2 * vz).top(top * vz).w(width * vz).p(2).border(1).border_dashed().border_color(SELECTION).key_context("ExcalidrawTextEditor").on_action("excalidraw_end_edit", (_e2, cx) => this.endEdit(cx, {})).on_key_down((e4, cx) => {
       if (e4.key === "escape") this.endEdit(cx, {});
     }).child(editor)];
   }
   button(id, label, active, t, onPress) {
-    return div().id(id).px(8).py(4).rounded(6).text_size(14).cursor_pointer().bg(active ? t.selected : "#00000000").text_color(t.foreground).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
+    return div2().id(id).px(8).py(4).rounded(6).text_size(14).cursor_pointer().bg(active ? t.selected : "#00000000").text_color(t.foreground).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
       cx.stop_propagation();
       onPress(cx);
     }).child(label);
   }
   toolbar(t) {
-    return div().absolute().top(8).left(0).w_full().flex().justify_center().child(
-      div().flex().gap(2).p(4).rounded(8).bg(t.surface).border(1).border_color(t.border).children(TOOLS.map((tool) => this.button(`tool-${tool.id}`, tool.label, this.tool === tool.id, t, (cx) => this.setTool(tool.id, cx))))
+    return div2().absolute().top(8).left(0).w_full().flex().justify_center().child(
+      div2().flex().gap(2).p(4).rounded(8).bg(t.surface).border(1).border_color(t.border).children(TOOLS.map((tool) => this.button(`tool-${tool.id}`, tool.label, this.tool === tool.id, t, (cx) => this.setTool(tool.id, cx))))
     );
   }
   stylePanel(t) {
     const map = this.map();
     const selected = [...this.selected].map((id) => map.get(id)).filter(Boolean);
     const drawing = !["selection", "hand", "eraser"].includes(this.tool);
-    if (!drawing && !selected.length) return div();
+    if (!drawing && !selected.length) return div2();
     const current = selected[0] ?? this.style;
-    const swatch = (prop, color) => div().id(`${prop}-${color}`).w(20).h(20).rounded(4).cursor_pointer().border(current[prop] === color ? 2 : 1).border_color(current[prop] === color ? SELECTION : t.swatchBorder).bg(toColor(color) ?? "#ffffff").on_mouse_down("left", (e4, cx) => {
+    const swatch = (prop, color) => div2().id(`${prop}-${color}`).w(20).h(20).rounded(4).cursor_pointer().border(current[prop] === color ? 2 : 1).border_color(current[prop] === color ? SELECTION : t.swatchBorder).bg(toColor(color) ?? "#ffffff").on_mouse_down("left", (e4, cx) => {
       cx.stop_propagation();
       this.applyStyle(prop, color, cx);
-    }).child(color === "transparent" ? div().text_size(11).text_center().child("\u2205") : "");
+    }).child(color === "transparent" ? div2().text_size(11).text_center().child("\u2205") : "");
     const option = (prop, value, label) => this.button(`${prop}-${value}`, label, current[prop] === value, t, (cx) => this.applyStyle(prop, value, cx));
-    const row = (name, items) => div().flex().flex_col().gap(4).child(div().text_size(11).text_color(t.muted).child(name)).child(div().flex().gap(4).children(items));
+    const row = (name, items) => div2().flex().flex_col().gap(4).child(div2().text_size(11).text_color(t.muted).child(name)).child(div2().flex().gap(4).children(items));
     const hasText = selected.some((e4) => e4.type === "text" || Z2(e4, map)) || this.tool === "text";
     const rows = [
       row("Stroke", STROKES.map((c2) => swatch("strokeColor", c2))),
@@ -5068,17 +5250,18 @@ var Excalidraw = class extends View {
       row("Sloppiness", [option("roughness", 0, "0"), option("roughness", 1, "1"), option("roughness", 2, "2")])
     ];
     if (hasText) rows.push(row("Font size", FONT_SIZES.map(([label, size]) => this.button(`fontSize-${size}`, label, (selected.find((e4) => e4.type === "text")?.fontSize ?? this.style.fontSize) === size, t, (cx) => this.applyStyle("fontSize", size, cx)))));
-    return div().id("style-panel").absolute().top(60).left(8).flex().flex_col().gap(10).p(10).rounded(8).bg(t.surface).border(1).border_color(t.border).text_color(t.foreground).on_mouse_down("left", (e4, cx) => cx.stop_propagation()).children(rows);
+    return div2().id("style-panel").absolute().top(60).left(8).flex().flex_col().gap(10).p(10).rounded(8).bg(t.surface).border(1).border_color(t.border).text_color(t.foreground).on_mouse_down("left", (e4, cx) => cx.stop_propagation()).children(rows);
   }
   statusBar(t) {
     const state = this.saveError ? `Save failed: ${this.saveError}` : this.saving ? "Saving\u2026" : this.dirty ? "Unsaved" : this.lastText == null ? "New file" : "Saved";
-    return div().absolute().bottom(8).left(8).flex().gap(6).items_center().text_size(12).text_color(t.muted).children([
+    return div2().absolute().bottom(8).left(8).flex().gap(6).items_center().text_size(12).text_color(t.muted).children([
       this.button("zoom-out", "\u2212", false, t, (cx) => this.zoomBy(1 / 1.2, null, cx)),
       this.button("zoom-reset", `${Math.round(this.vz * 100)}%`, false, t, (cx) => this.setZoom(1, null, cx)),
       this.button("zoom-in", "+", false, t, (cx) => this.zoomBy(1.2, null, cx)),
       this.button("undo", "\u21B6", false, t, (cx) => this.undo(cx)),
       this.button("redo", "\u21B7", false, t, (cx) => this.redo(cx)),
-      div().child(`${basename(this.file)} \xB7 ${state}`)
+      this.button("open", "Open\u2026", false, t, (cx) => this.switchFile(cx)),
+      div2().child(`${basename(this.file)} \xB7 ${state}`)
     ]);
   }
   // ---- tools and styles --------------------------------------------------------------

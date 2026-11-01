@@ -1,4 +1,8 @@
 {
   "place": "none",
-  "title": "Excalidraw"
+  "title": "Excalidraw",
+  "overlay": {
+    "width": 560,
+    "height": 460
+  }
 }
