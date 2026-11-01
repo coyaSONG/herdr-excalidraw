@@ -25,18 +25,18 @@ Then restart Herdr once so it loads the Excalifont handwriting font that comes w
 
 **Press <kbd>⌘⇧E</kbd>** in any terminal.
 
-<img src="docs/launcher.png" alt="The launcher: drawings in the terminal's folder" width="520">
+<img src="docs/launcher.png" alt="The launcher: drawings in the terminal's folder" width="560">
+
+It drops down from the top like Herdr's own picker and follows your theme.
 
 - The list shows the `.excalidraw` files in **that terminal's folder**.
 - **Click** one (or <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd>) to open it **beside** the
-  pane you were in. **Tab** opens it in a new tab instead.
-- **New drawing** creates `drawing.excalidraw` (then `drawing-2`, …) and opens it.
-- **Choose folder…** lists another folder. <kbd>Esc</kbd> closes.
+  pane you were in. **new tab** on a row opens it in a new tab instead.
+- **+ New drawing** creates `drawing.excalidraw` (then `drawing-2`, …) and opens it.
+- **Choose folder** lists another folder. <kbd>Esc</kbd> closes.
 
 Inside the editor, **Open…** in the bottom bar switches that pane to another drawing. A pane
-opened without a file shows the same list in place, and remembers what you pick:
-
-<img src="docs/in-pane.png" alt="A pane without a file lists the drawings" width="560">
+opened without a file shows the same list in place, and remembers what you pick.
 
 From a shell or an agent:
 
@@ -114,7 +114,7 @@ Herdr 안에서 터미널 옆에 Excalidraw 그림을 열고 그리는 mod입니
    라고 하거나, `mods/excalidraw`를 `~/.config/herdr-app/mods/`에 복사하고 `keys.json`을
    합칩니다. 손글씨 글꼴을 쓰려면 Herdr를 한 번 재시작하세요.
 2. **열기**: 터미널에서 <kbd>⌘⇧E</kbd> → 그 터미널 폴더의 `.excalidraw` 목록이 뜹니다.
-   클릭하면 옆 pane에, **Tab**은 새 탭에 열립니다. **New drawing**으로 새 그림을 만듭니다.
+   클릭하면 옆 pane에, 줄 오른쪽 **new tab**은 새 탭에 열립니다. **+ New drawing**으로 새 그림을 만듭니다.
    편집기 하단의 **Open…**으로 다른 그림으로 바꿀 수 있습니다.
 3. **그리기**: 위 툴바나 단축키(V·R·D·O·A·L·P·T·E), 왼쪽 패널로 색과 채우기를 바꿉니다.
 4. **저장**: 바꿀 때마다 자동 저장되고, 파일이 밖에서 바뀌면(에이전트, git) 다시 불러옵니다.

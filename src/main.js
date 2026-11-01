@@ -230,8 +230,11 @@ export default class Excalidraw extends View {
       else if (this.file) this.openFile(this.file, cx);
       return;
     }
-    const name = this.picker.key(e);
-    if (name) this.choose(this.picker.path(name), cx);
+    const item = this.picker.key(e);
+    const actions = this.pickerActions();
+    if (item?.kind === "file") actions.open(item.name, cx);
+    else if (item?.kind === "new") actions.newDrawing(cx);
+    else if (item?.kind === "folder") actions.chooseFolder(cx);
     cx.notify();
   }
 
@@ -457,11 +460,12 @@ export default class Excalidraw extends View {
     const root = div().id("excalidraw").size_full().relative().overflow_hidden().bg(t.background ?? "#ffffff")
       .on_size_change((size, cx) => { this.size = size; cx.notify(); });
     if (this.status === "pick") {
-      const hint = this.overlay
-        ? "Click opens it beside the current pane · Tab: in a new tab · ↑↓ Enter · Esc closes"
-        : "Click opens it in this pane · ↑↓ Enter";
-      return root.track_focus(this.focus).on_key_down((e, cx) => this.pickerKey(e, cx))
-        .child(this.picker.render(UI, this.pickerActions(), { title: this.overlay ? "Open a drawing" : "Excalidraw", hint }));
+      const list = this.picker.render(t, this.pickerActions(), this.overlay
+        ? { title: "Open a drawing", escHint: true }
+        : { title: "Open a drawing in this pane", escHint: Boolean(this.file), bg: t.background });
+      // A popup takes the size of what it shows; a pane fills its space.
+      const host = this.overlay ? div().id("excalidraw").w_full() : root;
+      return host.track_focus(this.focus).on_key_down((e, cx) => this.pickerKey(e, cx)).child(list);
     }
     if (this.status !== "ready") {
       const message = this.status === "error" ? ["Can't open the drawing.", this.error] : ["Loading…"];

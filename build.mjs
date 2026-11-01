@@ -50,8 +50,9 @@ await build({
   plugins: [patchRoughTokenizer],
 });
 
-// No place in a layout; mod.open:excalidraw shows the launcher at this size.
-await writeFile(join(out, "mod.json"), JSON.stringify({ place: "none", title: "Excalidraw", overlay: { width: 560, height: 460 } }, null, 2) + "\n");
+// No place in a layout. mod.open:excalidraw drops the launcher from the top like Herdr's own
+// picker; it is as tall as its list, up to 70% of the window.
+await writeFile(join(out, "mod.json"), JSON.stringify({ place: "none", title: "Excalidraw", overlay: { kind: "popup", at: "top", offset: 40, width: 560, height: 0.7 } }, null, 2) + "\n");
 await cp(join(root, "node_modules", "excalifont", "fonts", "Excalifont-Regular.ttf"), join(out, "fonts", "Excalifont-Regular.ttf"));
 await cp(join(root, "node_modules", "excalifont", "OFL.txt"), join(out, "fonts", "OFL.txt"));
 // The bundle carries Excalidraw's code (and what @excalidraw/element bundles itself).

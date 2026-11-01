@@ -9,17 +9,22 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
 
 ## What you see
 
-- **A launcher**, on <kbd>⌘⇧E</kbd> (`mod.open:excalidraw`): a 560×460 dialog titled “Open a
-  drawing” with “New drawing” and “Choose folder…” buttons, a gray line with the folder (`~`
-  for home), a scrolling list of that folder's `.excalidraw` files (the highlighted row is
-  `#e0dfff`, others white, hover `#f1f0ff`), a small “Tab” button on each row, and a hint at
-  the bottom. The folder is the focused terminal's, else another terminal's in the tab, else
-  home.
+- **A launcher**, on <kbd>⌘⇧E</kbd> (`mod.open:excalidraw`): a popup dropped 40px from the top,
+  560px wide, as tall as its content (at most 70% of the window), in Herdr's theme like its
+  “Go to…” picker: `popover` background, 18px padding, 10px gaps, 13px text. A header “Open a
+  drawing” (15px semibold, `foreground`) with “Esc” (11px, `muted`) at the right; the folder
+  (11px, `muted`, `~` for home); the folder's `.excalidraw` files as 32px rows (7px radius,
+  `hover` background when selected or hovered) with a `dim` “◇”, the name without the
+  extension, and an 11px `muted` “new tab” at the right; up to 320px of rows, then scrolling.
+  Under a 1px `input` line, two action rows: “+ New drawing” and “… Choose folder”. With no
+  drawings, a `muted` “No drawings in this folder yet.” row stands in for the list. The folder
+  is the focused terminal's, else another terminal's in the tab, else home.
 - **An editor pane**, opened from the launcher, or with `pane.split {direction, mod:
   "excalidraw", props: {file}}` / `tab.new {mod: "excalidraw", props: {file}}` (`file`
   absolute, `~/` works). A pane opened without a file shows the same list in place, titled
-  “Excalidraw”, without the Tab buttons. Nothing is added to a layout: `mod.json` is
-  `{ "place": "none", "title": "Excalidraw", "overlay": { "width": 560, "height": 460 } }`.
+  “Open a drawing in this pane”, on the theme's `background`, without “new tab”. Nothing is
+  added to a layout: `mod.json` is `{ "place": "none", "title": "Excalidraw", "overlay":
+  { "kind": "popup", "at": "top", "offset": 40, "width": 560, "height": 0.7 } }`.
 - The drawing's own canvas color (`appState.viewBackgroundColor`, white by default) fills the
   pane. Shapes are Excalidraw's: rough outlines, hachure / cross-hatch / solid fills, dashed and
   dotted strokes, rounded corners, arrows with arrowheads, free-draw strokes with pressure
@@ -50,10 +55,11 @@ Choosing a drawing:
 
 - In the launcher, a click on a row (or ↑/↓ and Enter) opens it with `pane.split {direction:
   "right", pane: <the pane focused when the launcher opened>, mod, props: {file}}` and closes
-  the launcher; “Tab” opens it with `tab.new {name: <file name>, mod, props: {file}}`. With no
-  focused pane it opens in a new tab. Escape closes.
+  the launcher; “new tab” opens it with `tab.new {name: <file name>, mod, props: {file}}`. With
+  no focused pane it opens in a new tab. ↑/↓ wrap and also reach the two action rows; Escape
+  closes.
 - “New drawing” writes an empty drawing as `drawing.excalidraw`, else `drawing-2…`, in the
-  listed folder (never overwriting) and opens it the same way. “Choose folder…” asks with the
+  listed folder (never overwriting) and opens it the same way. “Choose folder” asks with the
   system folder picker and lists that folder.
 - In a pane's own list, choosing opens the drawing in that pane and stores its path in the
   copy's `localStorage` (`file`), so the pane reopens it after a restart; Escape returns to
@@ -130,11 +136,13 @@ Choosing a drawing:
   `bindOrUnbindLinearElement`, `updateBoundElements`, `fixBindingsAfterDeletion`,
   `getBoundTextElement`, `redrawTextBoundingBox`, `refreshTextDimensions`,
   `setCustomTextMetricsProvider`.
-- **Herdr functions**: `props` (`file`, `overlay`), `settings` (zoom), `theme` (only for the
-  loading/error message), `focused`, `panes`, `run` (`pane.split`, `tab.new`), `closeOverlay`,
+- **Herdr functions**: `props` (`file`, `overlay`), `settings` (zoom), `theme` (the list and
+  the loading/error message), `focused`, `panes`, `run` (`pane.split`, `tab.new`), `closeOverlay`,
   `pickFolder`, `readTextFile`, `writeTextFile`, `watchFolder`, `notify`, `home`, `appHome`;
   `fs/promises` `readdir`/`exists`/`mkdir`/`writeFile`; `localStorage`.
-  `picker.js` is the list: folder listing, new-drawing names, keys, the rows.
+  `picker.js` is the list: folder listing, new-drawing names, keys, the rows; it reads
+  `theme()` because it sits on Herdr's UI, while the editor's toolbar, panel and status row keep
+  the fixed light palette of the canvas they float on.
 - **What it touches**: no network, no `exec`, no `hc`. It lists folders you open the launcher
   in or choose, creates new drawings there, reads and writes the drawing it shows, watches
   that drawing's folder, and writes the drawing's embedded images (decoded from their data
@@ -177,7 +185,7 @@ Choosing a drawing:
 
 - `herdr-app check mods/excalidraw` passes.
 - In a terminal whose folder has two drawings, <kbd>⌘⇧E</kbd> shows both; Enter opens the
-  first beside the terminal; “Tab” on the second opens it in a new tab named after it; “New
+  first beside the terminal; “new tab” on the second opens it in a new tab named after it; “New
   drawing” creates `drawing.excalidraw` and opens it empty. <kbd>⌘⇧E</kbd> from an editor pane
   lists the same folder.
 - `pane.split` with the mod and no props shows the list in the pane; Enter opens the first

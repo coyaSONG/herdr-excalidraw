@@ -4557,6 +4557,7 @@ function buildLayers(elements, elementsMap, scale, opts) {
 
 // src/picker.js
 import { div } from "gpui-kit";
+import { h_flex, v_flex } from "gpui-base";
 import { home, pickFolder, writeTextFile } from "herdr";
 import * as fs from "fs/promises";
 
@@ -4667,6 +4668,8 @@ var History = class {
 // src/picker.js
 var EXT = ".excalidraw";
 var MAX_FILES = 300;
+var ROW = 32;
+var LIST_MAX = 320;
 var tildify = (p2) => p2 === home() ? "~" : p2.startsWith(`${home()}/`) ? `~${p2.slice(home().length)}` : p2;
 var Picker = class {
   constructor(folder) {
@@ -4683,13 +4686,17 @@ var Picker = class {
       this.error = null;
     } catch (e4) {
       this.files = [];
-      this.error = `Can't list ${tildify(this.folder)}: ${e4?.message ?? e4}`;
+      this.error = `Can't list this folder: ${e4?.message ?? e4}`;
     }
-    this.index = Math.min(this.index, Math.max(0, this.files.length - 1));
+    this.index = Math.min(this.index, this.items().length - 1);
     this.loaded = true;
   }
   path(name) {
     return `${this.folder}/${name}`;
+  }
+  /** What ↑↓ Enter move over: the files, then the two actions. */
+  items() {
+    return [...this.files.map((name) => ({ kind: "file", name })), { kind: "new" }, { kind: "folder" }];
   }
   async chooseFolder() {
     const folder = await pickFolder({ prompt: "Folder with drawings" });
@@ -4709,45 +4716,51 @@ var Picker = class {
     }
     throw new Error("no free drawing-N.excalidraw name");
   }
-  /** Up/down move, enter opens; returns the file name to open or null. */
+  /** ↑↓ move (wrapping), Enter returns the item to act on; anything else returns null. */
   key(e4) {
-    if (e4.key === "down") this.index = Math.min(this.index + 1, this.files.length - 1);
-    else if (e4.key === "up") this.index = Math.max(this.index - 1, 0);
-    else if (e4.key === "enter" && this.files.length) return this.files[this.index];
+    const n = this.items().length;
+    if (e4.key === "down") this.index = (this.index + 1) % n;
+    else if (e4.key === "up") this.index = (this.index + n - 1) % n;
+    else if (e4.key === "enter") return this.items()[this.index];
     return null;
   }
   /**
-   * The list. `t` is the light palette; `actions`: open(name), openInTab?(name), newDrawing(),
-   * chooseFolder(). `title` heads it; `hint` explains what a click does.
+   * `t` is Herdr's theme; `actions`: open(name), openInTab?(name), newDrawing(), chooseFolder().
+   * `title` heads it; `escHint` shows "Esc" at the right, as Herdr's popups do; `bg` overrides
+   * the popover background (a pane uses the terminals' background).
    */
-  render(t, actions, { title, hint }) {
-    const button = (id, label, onPress) => div().id(id).px(10).py(5).rounded(6).text_size(13).cursor_pointer().border(1).border_color(t.border).bg(t.surface).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
-      cx.stop_propagation();
-      onPress(cx);
-    }).child(label);
-    const rows = this.files.map((name, i) => div().id(`file-${i}`).flex().items_center().gap(8).px(10).py(6).rounded(6).cursor_pointer().bg(i === this.index ? t.selected : t.surface).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
+  render(t, actions, { title, escHint, bg }) {
+    const row = (id, i, content, onPress) => h_flex().id(id).mx(4).px(10).h(ROW).flex_none().items_center().gap(10).rounded(7).cursor_pointer().when(i === this.index, (el) => el.bg(t.hover)).hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
       cx.stop_propagation();
       this.index = i;
-      actions.open(name, cx);
-    }).children([
-      div().flex_1().text_size(14).text_color(t.foreground).truncate().child(name),
-      actions.openInTab ? div().id(`file-tab-${i}`).px(8).py(2).rounded(4).text_size(12).text_color(t.muted).border(1).border_color(t.border).hover((s) => s.bg(t.surface)).on_mouse_down("left", (e4, cx) => {
+      onPress(cx);
+    }).children(content);
+    const files = this.files.map((name, i) => row(`file-${i}`, i, [
+      div().w(14).flex_none().text_color(t.dim).child("\u25C7"),
+      div().flex_1().truncate().text_color(t.foreground).child(name.slice(0, -EXT.length)),
+      actions.openInTab ? div().id(`file-tab-${i}`).px(6).rounded(5).text_size(11).text_color(t.muted).hover((s) => s.text_color(t.foreground).bg(t.raised)).on_mouse_down("left", (e4, cx) => {
         cx.stop_propagation();
         actions.openInTab(name, cx);
-      }).child("Tab") : div()
-    ]));
-    const empty = this.error ?? (this.loaded ? "No drawings here yet. Start a new one, or choose another folder." : "Loading\u2026");
-    return div().flex().flex_col().gap(10).p(16).size_full().bg(t.surface).text_color(t.foreground).children([
-      div().flex().items_center().justify_between().children([
-        div().text_size(16).font_semibold().child(title),
-        div().flex().gap(6).children([
-          button("new-drawing", "New drawing", (cx) => actions.newDrawing(cx)),
-          button("choose-folder", "Choose folder\u2026", (cx) => actions.chooseFolder(cx))
-        ])
+      }).child("new tab") : div()
+    ], (cx) => actions.open(name, cx)));
+    const n = this.files.length;
+    const action = (i, glyph, label, onPress) => row(i === n ? "new-drawing" : "choose-folder", i, [
+      div().w(14).flex_none().text_color(t.muted).child(glyph),
+      div().flex_1().text_color(t.foreground).child(label)
+    ], onPress);
+    const empty = !this.loaded ? "Loading\u2026" : this.error ?? "No drawings in this folder yet.";
+    const listHeight = Math.min(LIST_MAX, Math.max(n, 1) * (ROW + 2));
+    return v_flex().w_full().min_h(0).p(18).gap(10).bg(bg ?? t.popover).text_size(13).children([
+      h_flex().items_center().gap(10).children([
+        div().flex_1().text_size(15).font_semibold().text_color(t.foreground).child(title),
+        escHint ? div().text_size(11).text_color(t.muted).child("Esc") : div()
       ]),
-      div().text_size(12).text_color(t.muted).truncate().child(tildify(this.folder)),
-      div().id("file-list").flex_1().flex().flex_col().gap(2).overflow_y_scrollbar().children(rows.length ? rows : [div().p(10).text_size(13).text_color(t.muted).child(empty)]),
-      div().text_size(11).text_color(t.muted).child(hint)
+      div().text_size(11).text_color(t.muted).truncate().child(tildify(this.folder)),
+      n ? v_flex().id("file-list").h(listHeight).min_h(0).gap(2).overflow_y_scrollbar().children(files) : div().mx(4).px(10).h(ROW).flex().items_center().text_color(t.muted).child(empty),
+      v_flex().gap(2).pt(6).border_t_1().border_color(t.input).children([
+        action(n, "+", "New drawing", (cx) => actions.newDrawing(cx)),
+        action(n + 1, "\u2026", "Choose folder", (cx) => actions.chooseFolder(cx))
+      ])
     ]);
   }
 };
@@ -4953,8 +4966,11 @@ var Excalidraw = class extends View {
       else if (this.file) this.openFile(this.file, cx);
       return;
     }
-    const name = this.picker.key(e4);
-    if (name) this.choose(this.picker.path(name), cx);
+    const item = this.picker.key(e4);
+    const actions = this.pickerActions();
+    if (item?.kind === "file") actions.open(item.name, cx);
+    else if (item?.kind === "new") actions.newDrawing(cx);
+    else if (item?.kind === "folder") actions.chooseFolder(cx);
     cx.notify();
   }
   // ---- coordinates -------------------------------------------------------------------
@@ -5185,8 +5201,9 @@ var Excalidraw = class extends View {
       cx.notify();
     });
     if (this.status === "pick") {
-      const hint = this.overlay ? "Click opens it beside the current pane \xB7 Tab: in a new tab \xB7 \u2191\u2193 Enter \xB7 Esc closes" : "Click opens it in this pane \xB7 \u2191\u2193 Enter";
-      return root.track_focus(this.focus).on_key_down((e4, cx) => this.pickerKey(e4, cx)).child(this.picker.render(UI, this.pickerActions(), { title: this.overlay ? "Open a drawing" : "Excalidraw", hint }));
+      const list = this.picker.render(t, this.pickerActions(), this.overlay ? { title: "Open a drawing", escHint: true } : { title: "Open a drawing in this pane", escHint: Boolean(this.file), bg: t.background });
+      const host = this.overlay ? div2().id("excalidraw").w_full() : root;
+      return host.track_focus(this.focus).on_key_down((e4, cx) => this.pickerKey(e4, cx)).child(list);
     }
     if (this.status !== "ready") {
       const message = this.status === "error" ? ["Can't open the drawing.", this.error] : ["Loading\u2026"];
