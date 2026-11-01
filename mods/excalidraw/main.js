@@ -25,7 +25,7 @@ globalThis.Path2D ??= class Path2D { constructor(d) { this.d = d; } };
 
 
 // src/main.js
-import { View, div as div2, PathBuilder as PathBuilder2, image } from "gpui-kit";
+import { View, div as div2, PathBuilder as PathBuilder2, image, svg } from "gpui-kit";
 import { TextareaState, Textarea } from "gpui-base";
 import { props, settings, theme, readTextFile, writeTextFile as writeTextFile2, watchFolder, notify, home as home2, appHome, run, focused, panes, closeOverlay } from "herdr";
 import { Buffer } from "buffer";
@@ -4767,29 +4767,29 @@ var Picker = class {
 
 // src/main.js
 var isWide = (c2) => c2 >= 4352 && c2 <= 4447 || c2 >= 11904 && c2 <= 42191 || c2 >= 44032 && c2 <= 55203 || c2 >= 63744 && c2 <= 64255 || c2 >= 65072 && c2 <= 65103 || c2 >= 65280 && c2 <= 65376 || c2 >= 65504 && c2 <= 65510 || c2 >= 127744 && c2 <= 129791;
-Rx({
-  getLineWidth(text, font) {
-    const size = parseFloat(font) || 20;
-    let w3 = 0;
-    for (const ch2 of text) {
-      const c2 = ch2.codePointAt(0);
-      w3 += (isWide(c2) ? 1 : c2 === 32 ? 0.3 : 0.55) * size;
-    }
-    return w3;
+var lineWidth = (text, size) => {
+  let w3 = 0;
+  for (const ch2 of text) {
+    const c2 = ch2.codePointAt(0);
+    w3 += (isWide(c2) ? 1 : c2 === 32 ? 0.3 : 0.55) * size;
   }
-});
+  return w3;
+};
+Rx({ getLineWidth: (text, font) => lineWidth(text, parseFloat(font) || 20) });
+var ICONS = "mods/excalidraw/icons";
 var TOOLS = [
-  { id: "selection", label: "\u2196", key: "v / 1", title: "Select" },
-  { id: "hand", label: "\u270B", key: "h", title: "Hand" },
-  { id: "rectangle", label: "\u25AD", key: "r / 2", title: "Rectangle" },
-  { id: "diamond", label: "\u25C7", key: "d / 3", title: "Diamond" },
-  { id: "ellipse", label: "\u25EF", key: "o / 4", title: "Ellipse" },
-  { id: "arrow", label: "\u2192", key: "a / 5", title: "Arrow" },
-  { id: "line", label: "\u2571", key: "l / 6", title: "Line" },
-  { id: "freedraw", label: "\u270E", key: "p / 7", title: "Draw" },
-  { id: "text", label: "T", key: "t / 8", title: "Text" },
-  { id: "eraser", label: "\u232B", key: "e / 0", title: "Eraser" }
+  { id: "selection", key: "V or 1", title: "Select" },
+  { id: "hand", key: "H, or hold Space", title: "Hand (pan)" },
+  { id: "rectangle", key: "R or 2", title: "Rectangle" },
+  { id: "diamond", key: "D or 3", title: "Diamond" },
+  { id: "ellipse", key: "O or 4", title: "Ellipse" },
+  { id: "arrow", key: "A or 5", title: "Arrow" },
+  { id: "line", key: "L or 6", title: "Line" },
+  { id: "freedraw", key: "P or 7", title: "Draw" },
+  { id: "text", key: "T or 8", title: "Text" },
+  { id: "eraser", key: "E or 0", title: "Eraser" }
 ];
+var CONTAINERS = ["rectangle", "diamond", "ellipse"];
 var TOOL_KEYS = {
   v: "selection",
   1: "selection",
@@ -4859,6 +4859,7 @@ var Excalidraw = class extends View {
     this.builtZ = 1;
     this.active = /* @__PURE__ */ new Set();
     this.status = "loading";
+    this.panelCollapsed = localStorage.getItem("panelCollapsed") === "1";
     const editor = this;
     this.Layer = class Layer extends View {
       init(p3) {
@@ -5211,7 +5212,7 @@ var Excalidraw = class extends View {
     }
     const bg = toColor(this.doc.appState.viewBackgroundColor) ?? "#ffffff";
     const cursor = (el) => this.tool === "hand" || this.spaceDown ? el.cursor_grab() : this.tool === "text" ? el.cursor_text() : this.tool === "selection" ? el.cursor_default() : el.cursor_crosshair();
-    const canvas = cursor(div2().id("canvas").absolute().top(0).left(0).size_full().bg(bg).overflow_hidden()).on_mouse_down("left", (e4, cx) => this.onDown(e4, cx)).on_mouse_down("middle", (e4, cx) => this.onPanStart(e4, cx)).on_mouse_move((e4, cx) => this.onMove(e4, cx)).on_mouse_up("left", (e4, cx) => this.onUp(cx)).on_mouse_up("middle", (e4, cx) => this.onUp(cx)).on_scroll_wheel((e4, cx) => this.onWheel(e4, cx)).child(div2().absolute().left(this.scrollX * this.vz).top(this.scrollY * this.vz).size_full().children([...this.visibleLayerViews(), this.liveView, ...this.textEditor()]));
+    const canvas = cursor(div2().id("canvas").absolute().top(0).left(0).size_full().bg(bg).overflow_hidden()).on_mouse_down("left", (e4, cx) => this.onDown(e4, cx)).on_mouse_down("middle", (e4, cx) => this.onPanStart(e4, cx)).on_mouse_move((e4, cx) => this.onMove(e4, cx)).on_mouse_up("left", (e4, cx) => this.onUp(cx)).on_mouse_up("middle", (e4, cx) => this.onUp(cx)).on_scroll_wheel((e4, cx) => this.onWheel(e4, cx)).child(div2().absolute().left(this.scrollX * this.vz).top(this.scrollY * this.vz).size_full().children([...this.visibleLayerViews(), this.liveView, ...this.textEditor()])).child(this.emptyHint());
     return root.track_focus(this.focus).on_key_down((e4, cx) => this.onKey(e4, cx)).on_key_up((e4, cx) => {
       if (e4.key === "space") {
         this.spaceDown = false;
@@ -5219,18 +5220,34 @@ var Excalidraw = class extends View {
       }
     }).children([canvas, this.toolbar(UI), this.stylePanel(UI), this.statusBar(UI)]);
   }
+  /** A first step for an empty drawing; gone as soon as there is anything on the canvas. */
+  emptyHint() {
+    if (this.elements().length || this.editing || this.pointer) return div2();
+    return div2().absolute().top(0).left(0).size_full().flex().flex_col().items_center().justify_center().gap(6).text_color(UI.muted).children([
+      div2().text_size(16).child("Pick a tool above, then drag on the canvas"),
+      div2().text_size(12).child("R rectangle \xB7 O ellipse \xB7 A arrow \xB7 P draw \xB7 T text \u2014 double-click anywhere to write")
+    ]);
+  }
   textEditor() {
     if (!this.editing) return [];
     const el = this.scene.getElement(this.editing.id);
     if (!el) return [];
     const vz = this.vz;
     const container = el.containerId ? this.scene.getElement(el.containerId) : null;
-    const x2 = container ? container.x : el.x;
-    const width = container ? container.width : Math.max(el.width + el.fontSize * 2, 120);
-    const top = container ? container.y + Math.max(0, (container.height - el.height) / 2) : el.y;
+    let x2 = el.x;
+    let width = Math.max(el.width + el.fontSize * 2, 120);
+    let top = el.y;
+    if (container) {
+      const lines = this.editing.state.value().split("\n");
+      const textW = Math.max(...lines.map((l) => lineWidth(l, el.fontSize)), el.fontSize);
+      const textH = lines.length * el.fontSize * el.lineHeight;
+      width = Math.min(textW + el.fontSize, container.width);
+      x2 = container.x + (container.width - width) / 2;
+      top = container.y + Math.max(0, (container.height - textH) / 2) - 3 / vz;
+    }
     let editor = Textarea.new(this.editing.state).font_family(fontName(el.fontFamily)).text_size(el.fontSize * vz).text_color(toColor(el.strokeColor) ?? "#1e1e1e");
     if (container) editor = editor.text_center();
-    return [div2().id("text-editor").absolute().left(x2 * vz).top(top * vz).w(width * vz).p(2).border(1).border_dashed().border_color(SELECTION).key_context("ExcalidrawTextEditor").on_action("excalidraw_end_edit", (_e2, cx) => this.endEdit(cx, {})).on_key_down((e4, cx) => {
+    return [div2().id("text-editor").absolute().left(x2 * vz).top(top * vz).w(width * vz).p(2).rounded(4).border(1).border_color(SELECTION).bg(`${SELECTION}0d`).key_context("ExcalidrawTextEditor").on_action("excalidraw_end_edit", (_e2, cx) => this.endEdit(cx, {})).on_key_down((e4, cx) => {
       if (e4.key === "escape") this.endEdit(cx, {});
     }).child(editor)];
   }
@@ -5241,8 +5258,13 @@ var Excalidraw = class extends View {
     }).child(label);
   }
   toolbar(t) {
+    const active = (id) => this.editing ? id === "text" : this.tool === id;
+    const tool = (it) => div2().id(`tool-${it.id}`).w(34).h(30).flex().items_center().justify_center().rounded(6).cursor_pointer().tooltip(`${it.title} \u2014 ${it.key}`).bg(active(it.id) ? t.selected : "#00000000").hover((s) => s.bg(t.hover)).on_mouse_down("left", (e4, cx) => {
+      cx.stop_propagation();
+      this.setTool(it.id, cx);
+    }).child(svg(`${ICONS}/${it.id}.svg`).size(18).text_color(active(it.id) ? SELECTION : t.foreground));
     return div2().absolute().top(8).left(0).w_full().flex().justify_center().child(
-      div2().flex().gap(2).p(4).rounded(8).bg(t.surface).border(1).border_color(t.border).children(TOOLS.map((tool) => this.button(`tool-${tool.id}`, tool.label, this.tool === tool.id, t, (cx) => this.setTool(tool.id, cx))))
+      div2().flex().gap(2).p(4).rounded(8).bg(t.surface).border(1).border_color(t.border).children(TOOLS.map(tool))
     );
   }
   stylePanel(t) {
@@ -5267,10 +5289,28 @@ var Excalidraw = class extends View {
       row("Sloppiness", [option("roughness", 0, "0"), option("roughness", 1, "1"), option("roughness", 2, "2")])
     ];
     if (hasText) rows.push(row("Font size", FONT_SIZES.map(([label, size]) => this.button(`fontSize-${size}`, label, (selected.find((e4) => e4.type === "text")?.fontSize ?? this.style.fontSize) === size, t, (cx) => this.applyStyle("fontSize", size, cx)))));
-    return div2().id("style-panel").absolute().top(60).left(8).flex().flex_col().gap(10).p(10).rounded(8).bg(t.surface).border(1).border_color(t.border).text_color(t.foreground).on_mouse_down("left", (e4, cx) => cx.stop_propagation()).children(rows);
+    if (this.panelCollapsed) {
+      return div2().id("style-panel-open").absolute().top(60).left(8).px(10).py(5).rounded(8).cursor_pointer().text_size(12).bg(t.surface).border(1).border_color(t.border).text_color(t.foreground).hover((s) => s.bg(t.hover)).tooltip("Show the style panel").on_mouse_down("left", (e4, cx) => {
+        cx.stop_propagation();
+        this.setPanelCollapsed(false, cx);
+      }).child("Style \u25B8");
+    }
+    const header = div2().flex().items_center().justify_between().children([
+      div2().text_size(12).font_semibold().child("Style"),
+      div2().id("style-panel-hide").px(6).rounded(4).cursor_pointer().text_color(t.muted).hover((s) => s.bg(t.hover)).tooltip("Hide the style panel").on_mouse_down("left", (e4, cx) => {
+        cx.stop_propagation();
+        this.setPanelCollapsed(true, cx);
+      }).child("Hide")
+    ]);
+    return div2().id("style-panel").absolute().top(60).left(8).flex().flex_col().gap(10).p(10).rounded(8).bg(t.surface).border(1).border_color(t.border).text_color(t.foreground).on_mouse_down("left", (e4, cx) => cx.stop_propagation()).children([header, ...rows]);
+  }
+  setPanelCollapsed(collapsed, cx) {
+    this.panelCollapsed = collapsed;
+    localStorage.setItem("panelCollapsed", collapsed ? "1" : "0");
+    cx.notify();
   }
   statusBar(t) {
-    const state = this.saveError ? `Save failed: ${this.saveError}` : this.saving ? "Saving\u2026" : this.dirty ? "Unsaved" : this.lastText == null ? "New file" : "Saved";
+    const state = this.editing ? "Editing text \xB7 Esc to finish" : this.saveError ? `Save failed: ${this.saveError}` : this.saving ? "Saving\u2026" : this.dirty ? "Unsaved" : this.lastText == null ? "New file" : "Saved";
     return div2().absolute().bottom(8).left(8).flex().gap(6).items_center().text_size(12).text_color(t.muted).children([
       this.button("zoom-out", "\u2212", false, t, (cx) => this.zoomBy(1 / 1.2, null, cx)),
       this.button("zoom-reset", `${Math.round(this.vz * 100)}%`, false, t, (cx) => this.setZoom(1, null, cx)),
@@ -5342,6 +5382,31 @@ var Excalidraw = class extends View {
     }
     return null;
   }
+  /**
+   * The smallest rectangle, diamond or ellipse whose inside holds a scene point. Clicking inside
+   * an unfilled shape finds nothing by hit test (only its outline is drawn); this is the fallback,
+   * so a click inside a box selects the box and a double-click there labels it.
+   */
+  containerAt(p2) {
+    const map = this.map();
+    let best = null;
+    let bestArea = Infinity;
+    for (const el of this.elements()) {
+      if (el.locked || !CONTAINERS.includes(el.type)) continue;
+      let inside = false;
+      try {
+        inside = Sa([p2.x, p2.y], el, map);
+      } catch {
+        inside = false;
+      }
+      const area = Math.abs(el.width * el.height);
+      if (inside && area < bestArea) {
+        best = el;
+        bestArea = area;
+      }
+    }
+    return best;
+  }
   /** The element and everything in its outermost group. */
   groupOf(el) {
     const outer = el.groupIds?.[el.groupIds.length - 1];
@@ -5391,12 +5456,14 @@ var Excalidraw = class extends View {
     cx.notify(this.liveView);
   }
   selectDown(e4, p2, cx) {
-    const hit = this.hit(p2);
+    let hit = this.hit(p2);
     if (e4.click_count >= 2) {
       if (hit?.type === "text") return this.startText(p2, hit, cx);
-      if (hit && ["rectangle", "diamond", "ellipse"].includes(hit.type)) return this.startText(p2, hit, cx);
+      const container = hit && CONTAINERS.includes(hit.type) ? hit : this.containerAt(p2);
+      if (container) return this.startText(p2, container, cx);
       if (!hit) return this.startText(p2, null, cx);
     }
+    hit ??= this.containerAt(p2);
     if (hit) {
       const ids = this.groupOf(hit);
       if (e4.modifiers?.shift) {
@@ -5610,6 +5677,7 @@ var Excalidraw = class extends View {
     state.set_soft_wrap(!!el.containerId);
     state.set_auto_grow(1, 200);
     state.on("blur", (_e2, cx2) => this.endEdit(cx2, {}));
+    if (el.containerId) state.on("change", (_e2, cx2) => cx2.notify());
     state.on("submit", (_e2, cx2) => this.endEdit(cx2, {}));
     this.editing = { id: el.id, state, isNew, before: el.originalText ?? el.text };
     this.selected = /* @__PURE__ */ new Set();

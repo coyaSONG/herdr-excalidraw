@@ -31,21 +31,31 @@ disk (another editor, an agent, `git checkout`), the pane reloads it.
   taper, text in Excalifont (bundled in `fonts/`), images, frames as dashed gray boxes with
   their name. Rotated shapes draw rotated; rotated text and images draw unrotated.
 - A toolbar centered 8px from the top: a white card (1px `#e9ecef` border, 8px radius, 4px
-  padding, 2px gaps) with ten 14px glyph buttons, each 8×4px padded with a 6px radius:
-  `↖ ✋ ▭ ◇ ◯ → ╱ ✎ T ⌫` (select, hand, rectangle, diamond, ellipse, arrow, line, draw, text,
-  eraser). The active tool's button is `#e0dfff`; hover is `#f1f0ff`.
+  padding, 2px gaps) with ten 34×30px buttons (6px radius), each an 18px monochrome line icon
+  from the mod's `icons/` (select pointer, hand, rectangle, diamond, circle, arrow, line, pencil,
+  T, eraser) with a tooltip “<name> — <keys>”. The active tool's button is `#e0dfff` with a
+  `#6965db` icon; hover is `#f1f0ff`. While text is edited the T button is the active one.
+- On an empty drawing, centered gray `#868e96` text: “Pick a tool above, then drag on the
+  canvas” (16px) over “R rectangle · O ellipse · A arrow · P draw · T text — double-click
+  anywhere to write” (12px); it goes as soon as anything is drawn.
 - A style panel, 60px from the top and 8px from the left, while a drawing tool is active or
-  something is selected: a white card (10px padding, 10px gaps, 8px radius) with rows, each an
+  something is selected, headed “Style” (12px semibold) with a `#868e96` “Hide” at the right.
+  Hidden, it is a small outlined “Style ▸” chip in the same place; the choice is kept in the
+  copy's `localStorage` (`panelCollapsed`). The panel is
+  a white card (10px padding, 10px gaps, 8px radius) with rows, each an
   11px `#868e96` label over its options: Stroke (five 20px swatches `#1e1e1e #e03131 #2f9e44
   #1971c2 #f08c00`), Background (transparent shown as `∅`, `#ffc9c9 #b2f2bb #a5d8ff #ffec99`),
   Fill (`▤ ▦ ■`), Stroke width (1, 2, 4), Stroke style (solid, dashed, dotted), Sloppiness (0,
   1, 2), and Font size (S 16, M 20, L 28, XL 36) when text is involved. The current value has
   a 2px `#6965db` border or the selected background.
 - A status row 8px from the bottom-left, 12px `#868e96`: `−`, the zoom percent, `+`, `↶`,
-  `↷`, `Open…`, then `file name · Saved | Unsaved | Saving… | New file | Save failed: …`.
+  `↷`, `Open…`, then `file name · Saved | Unsaved | Saving… | New file | Save failed: …`, or
+  `file name · Editing text · Esc to finish` while text is being edited.
 - Selection: a 1.5px `#6965db` outline 6px outside each selected element, a dashed one around
   several. The selection box is `#6965db` over a `#6965db1f` fill. The eraser outlines what it
-  will remove with dashed `#e03131`. Text being edited sits in a dashed `#6965db` frame.
+  will remove with dashed `#e03131`. Text being edited sits in a 1px `#6965db` frame (4px radius,
+  `#6965db0d` fill); a label's frame is as wide as its text (growing while typing) and centred in
+  its shape, where the label will sit.
 - The toolbar, panel and status row use that fixed light palette, not Herdr's theme: they
   float on the drawing's canvas, which is light.
 
@@ -67,7 +77,7 @@ Choosing a drawing:
 
 | Tool | Key | Does |
 |---|---|---|
-| Select | `v` `1` | click selects (a group selects whole; text in a shape selects the shape), shift-click toggles, drag on empty canvas box-selects, drag a selection to move it, double-click text or a rectangle/diamond/ellipse to edit its text, double-click empty canvas for new text |
+| Select | `v` `1` | click selects (a group selects whole; text in a shape selects the shape; a click that hits nothing inside an unfilled rectangle, diamond or ellipse selects the smallest such shape around it), shift-click toggles, drag on empty canvas box-selects, drag a selection to move it, double-click text or inside a rectangle/diamond/ellipse to edit its label (the shape gets one if it has none), double-click empty canvas for new text |
 | Hand | `h`, hold `space` | drag pans; the middle button pans with any tool |
 | Rectangle, diamond, ellipse | `r` `2`, `d` `3`, `o` `4` | drag from a corner; shift makes it square |
 | Arrow, line | `a` `5`, `l` `6` | drag start to end; an arrow end dropped on or in a shape binds to it and snaps 4px off its outline |
@@ -101,7 +111,9 @@ Choosing a drawing:
 ## Built from
 
 - **One mod**, `mods/excalidraw/`: `main.js` (one esbuild bundle), `mod.json`,
-  `fonts/Excalifont-Regular.ttf` with `fonts/OFL.txt`, and license files. No `layouts/`.
+  `fonts/Excalifont-Regular.ttf` with `fonts/OFL.txt`, `icons/<tool>.svg` (24×24 strokes,
+  drawn with `svg()` from `mods/excalidraw/icons`, so the folder keeps that name), and license
+  files. No `layouts/`.
 - **A `keys.json` snippet**, merged into the person's keys (both sections, so it works while a
   terminal has focus):
 
@@ -203,6 +215,9 @@ Choosing a drawing:
   typing, `escape` edits it in the file.
 - Selecting a shape and a stroke swatch changes its `strokeColor` in the file. The eraser
   removes what it is clicked on.
+- Double-clicking inside an unfilled rectangle, typing and Escape saves the text with the
+  rectangle as its `containerId`; dragging from inside that rectangle moves both. A click inside
+  an unfilled ellipse selects it.
 - Editing the file from outside redraws the pane within a second.
 - `+` zooms 1.2× about the canvas center, the percent button and `shift-0` return to 100%,
   `shift-1` fits the drawing, scrolling pans.

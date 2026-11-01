@@ -58,6 +58,8 @@ await cp(join(root, "node_modules", "excalifont", "OFL.txt"), join(out, "fonts",
 // The bundle carries Excalidraw's code (and what @excalidraw/element bundles itself).
 await cp(join(root, "LICENSE"), join(out, "LICENSE"));
 await cp(join(root, "licenses", "excalidraw.txt"), join(out, "LICENSE-excalidraw.txt"));
+// Toolbar icons, drawn by src/main.js as svg("mods/excalidraw/icons/<tool>.svg").
+await cp(join(root, "src", "icons"), join(out, "icons"), { recursive: true });
 console.log(`built ${out}`);
 
 if (process.argv.includes("--install")) {

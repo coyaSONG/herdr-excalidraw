@@ -49,16 +49,17 @@ herdr-app do pane.split --direction right --mod excalidraw --props '{"file":"/ab
 
 | Tool | Key | |
 |---|---|---|
-| ↖ Select | <kbd>V</kbd> <kbd>1</kbd> | click, shift-click, drag a box; drag to move; double-click to edit text |
+| ↖ Select | <kbd>V</kbd> <kbd>1</kbd> | click a shape (inside or on its outline), shift-click, drag a box from empty canvas; drag to move; double-click a shape to label it |
 | ✋ Hand | <kbd>H</kbd>, or hold <kbd>Space</kbd> | drag to pan |
 | ▭ ◇ ◯ Shapes | <kbd>R</kbd> <kbd>D</kbd> <kbd>O</kbd> | drag; <kbd>Shift</kbd> for square / circle |
 | → ╱ Arrow, line | <kbd>A</kbd> <kbd>L</kbd> | drag; an arrow dropped on shapes sticks to them |
 | ✎ Draw | <kbd>P</kbd> | freehand |
-| T Text | <kbd>T</kbd> | click and type; <kbd>Esc</kbd> to finish |
+| T Text | <kbd>T</kbd> | click and type, or double-click anywhere; <kbd>Esc</kbd> to finish |
 | ⌫ Eraser | <kbd>E</kbd> | click or drag over things |
 
-The panel on the left sets colors, fill, stroke and font size — for the selection, or for
-what you draw next.
+Hover a tool for its name and shortcut. The panel on the left sets colors, fill, stroke and font
+size — for the selection, or for what you draw next; **Hide** folds it into a small **Style ▸**
+chip (remembered per pane).
 
 **Keys:** <kbd>⌫</kbd> delete · <kbd>⌘Z</kbd> undo · <kbd>⌘⇧Z</kbd> redo · <kbd>⌘A</kbd>
 select all · arrows nudge · <kbd>Enter</kbd> edit text · <kbd>Esc</kbd> deselect.
@@ -79,6 +80,8 @@ everything · <kbd>⇧0</kbd> back to 100% · − / + in the bottom bar.
 
 - Not here yet: resize and rotate handles, editing multi-point lines and elbow arrows, adding
   images, libraries, export. Such elements still show and are kept when saving.
+- Clicking inside an unfilled shape selects it (Excalidraw only reacts to the outline), so a
+  drag-to-select box has to start on empty canvas, outside any shape.
 - Herdr has no text measuring, so boxes around text are close but not exact. Excalifont has
   no Korean glyphs; Korean text uses a system font.
 - With a Korean input method on, a shortcut letter can end up at the end of the next text you

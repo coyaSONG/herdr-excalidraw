@@ -1,6 +1,6 @@
 // Excalidraw editor as a Herdr mod. As a pane it edits props.file (or a drawing chosen in the
 // pane); opened with mod.open:excalidraw it is a launcher that opens drawings beside the pane.
-import { View, div, PathBuilder, image } from "gpui-kit";
+import { View, div, PathBuilder, image, svg } from "gpui-kit";
 import { TextareaState, Textarea } from "gpui-base";
 import { props, settings, theme, readTextFile, writeTextFile, watchFolder, notify, home, appHome, run, focused, panes, closeOverlay } from "herdr";
 import { Buffer } from "buffer";
@@ -14,6 +14,7 @@ import {
   newTextElement,
   hitElementItself,
   hitElementBoundingBox,
+  isPointInElement,
   getElementBounds,
   getCommonBounds,
   getBoundTextElement,
@@ -34,30 +35,31 @@ import { History, emptyDocument, parseDocument, serializeDocument } from "./docu
 // Excalifont averages ~0.55em per Latin glyph; CJK and Hangul take a full em.
 const isWide = (c) => (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) ||
   (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff);
-setCustomTextMetricsProvider({
-  getLineWidth(text, font) {
-    const size = parseFloat(font) || 20;
-    let w = 0;
-    for (const ch of text) {
-      const c = ch.codePointAt(0);
-      w += (isWide(c) ? 1 : c === 32 ? 0.3 : 0.55) * size;
-    }
-    return w;
-  },
-});
+const lineWidth = (text, size) => {
+  let w = 0;
+  for (const ch of text) {
+    const c = ch.codePointAt(0);
+    w += (isWide(c) ? 1 : c === 32 ? 0.3 : 0.55) * size;
+  }
+  return w;
+};
+setCustomTextMetricsProvider({ getLineWidth: (text, font) => lineWidth(text, parseFloat(font) || 20) });
 
+// Icons are monochrome SVGs in the mod's icons/ folder, tinted with the text color.
+const ICONS = "mods/excalidraw/icons";
 const TOOLS = [
-  { id: "selection", label: "↖", key: "v / 1", title: "Select" },
-  { id: "hand", label: "✋", key: "h", title: "Hand" },
-  { id: "rectangle", label: "▭", key: "r / 2", title: "Rectangle" },
-  { id: "diamond", label: "◇", key: "d / 3", title: "Diamond" },
-  { id: "ellipse", label: "◯", key: "o / 4", title: "Ellipse" },
-  { id: "arrow", label: "→", key: "a / 5", title: "Arrow" },
-  { id: "line", label: "╱", key: "l / 6", title: "Line" },
-  { id: "freedraw", label: "✎", key: "p / 7", title: "Draw" },
-  { id: "text", label: "T", key: "t / 8", title: "Text" },
-  { id: "eraser", label: "⌫", key: "e / 0", title: "Eraser" },
+  { id: "selection", key: "V or 1", title: "Select" },
+  { id: "hand", key: "H, or hold Space", title: "Hand (pan)" },
+  { id: "rectangle", key: "R or 2", title: "Rectangle" },
+  { id: "diamond", key: "D or 3", title: "Diamond" },
+  { id: "ellipse", key: "O or 4", title: "Ellipse" },
+  { id: "arrow", key: "A or 5", title: "Arrow" },
+  { id: "line", key: "L or 6", title: "Line" },
+  { id: "freedraw", key: "P or 7", title: "Draw" },
+  { id: "text", key: "T or 8", title: "Text" },
+  { id: "eraser", key: "E or 0", title: "Eraser" },
 ];
+const CONTAINERS = ["rectangle", "diamond", "ellipse"];
 const TOOL_KEYS = {
   v: "selection", 1: "selection", h: "hand", r: "rectangle", 2: "rectangle", d: "diamond", 3: "diamond",
   o: "ellipse", 4: "ellipse", a: "arrow", 5: "arrow", l: "line", 6: "line", p: "freedraw", 7: "freedraw",
@@ -118,6 +120,7 @@ export default class Excalidraw extends View {
     this.builtZ = 1;
     this.active = new Set(); // elements drawn live, outside the static layers
     this.status = "loading";
+    this.panelCollapsed = localStorage.getItem("panelCollapsed") === "1";
 
     // Retained children: notifying one rebuilds only its description, so a drag redraws the
     // live layer while the static layers keep theirs.
@@ -483,11 +486,22 @@ export default class Excalidraw extends View {
       .on_mouse_up("middle", (e, cx) => this.onUp(cx))
       .on_scroll_wheel((e, cx) => this.onWheel(e, cx))
       .child(div().absolute().left(this.scrollX * this.vz).top(this.scrollY * this.vz).size_full()
-        .children([...this.visibleLayerViews(), this.liveView, ...this.textEditor()]));
+        .children([...this.visibleLayerViews(), this.liveView, ...this.textEditor()]))
+      .child(this.emptyHint());
     return root.track_focus(this.focus)
       .on_key_down((e, cx) => this.onKey(e, cx))
       .on_key_up((e, cx) => { if (e.key === "space") { this.spaceDown = false; cx.notify(); } })
       .children([canvas, this.toolbar(UI), this.stylePanel(UI), this.statusBar(UI)]);
+  }
+
+  /** A first step for an empty drawing; gone as soon as there is anything on the canvas. */
+  emptyHint() {
+    if (this.elements().length || this.editing || this.pointer) return div();
+    return div().absolute().top(0).left(0).size_full().flex().flex_col().items_center().justify_center().gap(6)
+      .text_color(UI.muted).children([
+        div().text_size(16).child("Pick a tool above, then drag on the canvas"),
+        div().text_size(12).child("R rectangle · O ellipse · A arrow · P draw · T text — double-click anywhere to write"),
+      ]);
   }
 
   textEditor() {
@@ -496,13 +510,23 @@ export default class Excalidraw extends View {
     if (!el) return [];
     const vz = this.vz;
     const container = el.containerId ? this.scene.getElement(el.containerId) : null;
-    const x = container ? container.x : el.x;
-    const width = container ? container.width : Math.max(el.width + el.fontSize * 2, 120);
-    const top = container ? container.y + Math.max(0, (container.height - el.height) / 2) : el.y;
+    let x = el.x;
+    let width = Math.max(el.width + el.fontSize * 2, 120);
+    let top = el.y;
+    if (container) {
+      // A label is edited where it will sit: a frame as wide as the text (it grows while typing),
+      // centred in the shape both ways.
+      const lines = this.editing.state.value().split("\n");
+      const textW = Math.max(...lines.map((l) => lineWidth(l, el.fontSize)), el.fontSize);
+      const textH = lines.length * el.fontSize * el.lineHeight;
+      width = Math.min(textW + el.fontSize, container.width);
+      x = container.x + (container.width - width) / 2;
+      top = container.y + Math.max(0, (container.height - textH) / 2) - 3 / vz;
+    }
     let editor = Textarea.new(this.editing.state).font_family(fontName(el.fontFamily)).text_size(el.fontSize * vz)
       .text_color(toColor(el.strokeColor) ?? "#1e1e1e");
     if (container) editor = editor.text_center();
-    return [div().id("text-editor").absolute().left(x * vz).top(top * vz).w(width * vz).p(2).border(1).border_dashed().border_color(SELECTION)
+    return [div().id("text-editor").absolute().left(x * vz).top(top * vz).w(width * vz).p(2).rounded(4).border(1).border_color(SELECTION).bg(`${SELECTION}0d`)
       .key_context("ExcalidrawTextEditor")
       .on_action("excalidraw_end_edit", (_e, cx) => this.endEdit(cx, {}))
       .on_key_down((e, cx) => { if (e.key === "escape") this.endEdit(cx, {}); })
@@ -518,9 +542,15 @@ export default class Excalidraw extends View {
   }
 
   toolbar(t) {
+    // While text is being edited the Text tool is what is in use, whatever tool started it.
+    const active = (id) => (this.editing ? id === "text" : this.tool === id);
+    const tool = (it) => div().id(`tool-${it.id}`).w(34).h(30).flex().items_center().justify_center().rounded(6).cursor_pointer()
+      .tooltip(`${it.title} — ${it.key}`)
+      .bg(active(it.id) ? t.selected : "#00000000").hover((s) => s.bg(t.hover))
+      .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.setTool(it.id, cx); })
+      .child(svg(`${ICONS}/${it.id}.svg`).size(18).text_color(active(it.id) ? SELECTION : t.foreground));
     return div().absolute().top(8).left(0).w_full().flex().justify_center().child(
-      div().flex().gap(2).p(4).rounded(8).bg(t.surface).border(1).border_color(t.border)
-        .children(TOOLS.map((tool) => this.button(`tool-${tool.id}`, tool.label, this.tool === tool.id, t, (cx) => this.setTool(tool.id, cx)))));
+      div().flex().gap(2).p(4).rounded(8).bg(t.surface).border(1).border_color(t.border).children(TOOLS.map(tool)));
   }
 
   stylePanel(t) {
@@ -545,14 +575,35 @@ export default class Excalidraw extends View {
       row("Sloppiness", [option("roughness", 0, "0"), option("roughness", 1, "1"), option("roughness", 2, "2")]),
     ];
     if (hasText) rows.push(row("Font size", FONT_SIZES.map(([label, size]) => this.button(`fontSize-${size}`, label, (selected.find((e) => e.type === "text")?.fontSize ?? this.style.fontSize) === size, t, (cx) => this.applyStyle("fontSize", size, cx)))));
+    // The panel folds into a small chip so it never has to cover the drawing.
+    if (this.panelCollapsed) {
+      return div().id("style-panel-open").absolute().top(60).left(8).px(10).py(5).rounded(8).cursor_pointer().text_size(12)
+        .bg(t.surface).border(1).border_color(t.border).text_color(t.foreground).hover((s) => s.bg(t.hover))
+        .tooltip("Show the style panel")
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.setPanelCollapsed(false, cx); })
+        .child("Style ▸");
+    }
+    const header = div().flex().items_center().justify_between().children([
+      div().text_size(12).font_semibold().child("Style"),
+      div().id("style-panel-hide").px(6).rounded(4).cursor_pointer().text_color(t.muted).hover((s) => s.bg(t.hover))
+        .tooltip("Hide the style panel")
+        .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.setPanelCollapsed(true, cx); })
+        .child("Hide"),
+    ]);
     return div().id("style-panel").absolute().top(60).left(8).flex().flex_col().gap(10).p(10).rounded(8)
       .bg(t.surface).border(1).border_color(t.border).text_color(t.foreground)
       .on_mouse_down("left", (e, cx) => cx.stop_propagation())
-      .children(rows);
+      .children([header, ...rows]);
+  }
+
+  setPanelCollapsed(collapsed, cx) {
+    this.panelCollapsed = collapsed;
+    localStorage.setItem("panelCollapsed", collapsed ? "1" : "0");
+    cx.notify();
   }
 
   statusBar(t) {
-    const state = this.saveError ? `Save failed: ${this.saveError}` : this.saving ? "Saving…" : this.dirty ? "Unsaved" : this.lastText == null ? "New file" : "Saved";
+    const state = this.editing ? "Editing text · Esc to finish" : this.saveError ? `Save failed: ${this.saveError}` : this.saving ? "Saving…" : this.dirty ? "Unsaved" : this.lastText == null ? "New file" : "Saved";
     return div().absolute().bottom(8).left(8).flex().gap(6).items_center().text_size(12).text_color(t.muted).children([
       this.button("zoom-out", "−", false, t, (cx) => this.zoomBy(1 / 1.2, null, cx)),
       this.button("zoom-reset", `${Math.round(this.vz * 100)}%`, false, t, (cx) => this.setZoom(1, null, cx)),
@@ -635,6 +686,25 @@ export default class Excalidraw extends View {
     return null;
   }
 
+  /**
+   * The smallest rectangle, diamond or ellipse whose inside holds a scene point. Clicking inside
+   * an unfilled shape finds nothing by hit test (only its outline is drawn); this is the fallback,
+   * so a click inside a box selects the box and a double-click there labels it.
+   */
+  containerAt(p) {
+    const map = this.map();
+    let best = null;
+    let bestArea = Infinity;
+    for (const el of this.elements()) {
+      if (el.locked || !CONTAINERS.includes(el.type)) continue;
+      let inside = false;
+      try { inside = isPointInElement([p.x, p.y], el, map); } catch { inside = false; }
+      const area = Math.abs(el.width * el.height);
+      if (inside && area < bestArea) { best = el; bestArea = area; }
+    }
+    return best;
+  }
+
   /** The element and everything in its outermost group. */
   groupOf(el) {
     const outer = el.groupIds?.[el.groupIds.length - 1];
@@ -682,12 +752,14 @@ export default class Excalidraw extends View {
   }
 
   selectDown(e, p, cx) {
-    const hit = this.hit(p);
+    let hit = this.hit(p);
     if (e.click_count >= 2) {
       if (hit?.type === "text") return this.startText(p, hit, cx);
-      if (hit && ["rectangle", "diamond", "ellipse"].includes(hit.type)) return this.startText(p, hit, cx);
+      const container = hit && CONTAINERS.includes(hit.type) ? hit : this.containerAt(p);
+      if (container) return this.startText(p, container, cx);
       if (!hit) return this.startText(p, null, cx);
     }
+    hit ??= this.containerAt(p);
     if (hit) {
       const ids = this.groupOf(hit);
       if (e.modifiers?.shift) {
@@ -897,6 +969,8 @@ export default class Excalidraw extends View {
     state.set_soft_wrap(!!el.containerId);
     state.set_auto_grow(1, 200);
     state.on("blur", (_e, cx) => this.endEdit(cx, {}));
+    // A label's frame follows the text's width, so it re-renders as you type.
+    if (el.containerId) state.on("change", (_e, cx) => cx.notify());
     state.on("submit", (_e, cx) => this.endEdit(cx, {}));
     this.editing = { id: el.id, state, isNew, before: el.originalText ?? el.text };
     this.selected = new Set();
